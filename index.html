@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema de precificação por SKU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#14171c; --panel:#1b1f26; --panel-2:#20252d; --line:#2b313b;
+    --ink-light:#e8e6df; --ink-mute:#8b9099;
+    --paper:#f2ede0; --paper-ink:#20221d; --paper-mute:#6b6659;
+    --good:#7fc98f; --bad:#e2716b; --accent:#c9a24a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink-light);font-family:'IBM Plex Mono', monospace;padding:32px 20px 60px;}
+  .wrap{max-width:1240px;margin:0 auto;}
+  h1{font-family:'Space Grotesk', sans-serif;font-weight:700;font-size:25px;margin:0 0 6px;letter-spacing:-0.01em;}
+  header p{margin:0;color:var(--ink-mute);font-size:13px;max-width:680px;line-height:1.6;}
+  .disclaimer{margin-top:14px;border:1px solid #4a3f27;background:#241f16;color:#d8bf87;font-size:12px;line-height:1.6;padding:11px 14px;border-radius:8px;}
+  .storagenote{margin-top:8px;font-size:11.5px;color:var(--ink-mute);}
+  nav.maintabs{display:flex;gap:8px;margin:22px 0 20px;border-bottom:1px solid var(--line);}
+  nav.maintabs button{background:none;border:none;color:var(--ink-mute);font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:500;padding:10px 4px;margin-right:22px;cursor:pointer;border-bottom:2px solid transparent;}
+  nav.maintabs button.active{color:var(--ink-light);border-bottom:2px solid var(--accent);}
+  .view{display:none;} .view.active{display:block;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px 20px;margin-bottom:18px;}
+  .card h2{font-family:'Space Grotesk', sans-serif;font-size:14px;font-weight:700;margin:0 0 4px;}
+  .card .sub{font-size:11.5px;color:var(--ink-mute);line-height:1.6;margin:0 0 14px;}
+  .field{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);}
+  .field:last-child{border-bottom:none;}
+  .field label{font-size:12.5px;color:var(--ink-mute);}
+  .field input, .field select{width:150px;text-align:right;background:transparent;border:none;border-bottom:1px solid var(--line);color:var(--ink-light);font-family:'IBM Plex Mono', monospace;font-size:13.5px;padding:4px 2px;}
+  .field textarea{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-light);font-family:'IBM Plex Mono', monospace;font-size:12px;padding:8px;border-radius:6px;resize:vertical;min-height:60px;}
+  .field.textrow{flex-direction:column;align-items:stretch;}
+  .field.textrow label{margin-bottom:6px;}
+  input:focus, select:focus, textarea:focus{outline:none;border-color:var(--accent);}
+  .btn{background:var(--panel-2);border:1px solid var(--line);color:var(--ink-light);font-family:inherit;font-size:12.5px;padding:8px 14px;border-radius:7px;cursor:pointer;}
+  .btn:hover{border-color:var(--ink-light);}
+  .btn.primary{background:var(--ink-light);color:var(--bg);border-color:var(--ink-light);font-weight:600;}
+  .btn.danger{color:var(--bad);}
+  .btn.small{padding:4px 9px;font-size:11.5px;}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;}
+  .toolbar input[type=text], .toolbar select{background:var(--panel-2);border:1px solid var(--line);color:var(--ink-light);font-family:inherit;font-size:12.5px;padding:8px 10px;border-radius:7px;}
+  .toolbar .spacer{flex:1;}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+  .metric .k{font-size:11px;color:var(--ink-mute);text-transform:uppercase;letter-spacing:.04em;}
+  .metric .v{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-top:4px;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  thead th{text-align:left;color:var(--ink-mute);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:8px 10px;border-bottom:1px solid var(--line);}
+  tbody td{padding:10px;border-bottom:1px solid var(--line);}
+  tbody tr{cursor:pointer;}
+  tbody tr:hover{background:var(--panel-2);}
+  tbody tr.selected{background:#26301f;}
+  .mkt-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+  .num{text-align:right;font-variant-numeric:tabular-nums;}
+  .pos{color:var(--good);} .neg{color:var(--bad);}
+  .empty{text-align:center;padding:50px 20px;color:var(--ink-mute);}
+  .empty .big{font-family:'Space Grotesk',sans-serif;font-size:16px;color:var(--ink-light);margin-bottom:6px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:640px){.grid2{grid-template-columns:1fr;}}
+  .prod-grid{display:grid;grid-template-columns:1fr 380px;gap:24px;align-items:start;}
+  @media (max-width:980px){.prod-grid{grid-template-columns:1fr;}}
+  .mkt-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;}
+  .confidence{display:inline-block;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px;margin-bottom:8px;}
+  .conf-alta{background:#1e3423;color:var(--good);} .conf-media{background:#332b16;color:#e0bf6b;} .conf-baixa{background:#3a2020;color:var(--bad);}
+  .receipt-outer{position:sticky;top:20px;}
+  .torn{height:9px;background:linear-gradient(-45deg, transparent 6px, var(--paper) 6px) 0 0/12px 12px,linear-gradient(45deg, transparent 6px, var(--paper) 6px) 0 0/12px 12px;background-color:transparent;}
+  .torn.bottom{transform:scaleY(-1);}
+  .receipt{background:var(--paper);color:var(--paper-ink);padding:24px 24px 20px;font-family:'IBM Plex Mono', monospace;}
+  .receipt h2{font-family:'Space Grotesk', sans-serif;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 2px;}
+  .receipt .mkt-name{font-size:12px;color:var(--paper-mute);margin:0 0 14px;}
+  .rline{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;}
+  .rline .val{font-weight:500;white-space:nowrap;margin-left:12px;}
+  .rline.neg .val{color:#9c4a3f;} .rline.pos .val{color:#3f7a4a;}
+  .rline.section{margin-top:10px;padding-top:8px;border-top:1px dashed #b9b2a0;font-weight:600;}
+  .divider{border-top:1px dashed #b9b2a0;margin:10px 0;}
+  .totals{border-top:2px solid var(--paper-ink);margin-top:12px;padding-top:10px;}
+  .totals .rline{font-size:14px;}
+  .totals .rline.profit .val{font-size:18px;font-weight:700;}
+  .price-hero{text-align:center;padding:12px 0 16px;border-bottom:1px dashed #b9b2a0;margin-bottom:4px;}
+  .price-hero .k{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--paper-mute);}
+  .price-hero .v{font-family:'Space Grotesk', sans-serif;font-size:28px;font-weight:700;margin-top:4px;}
+  .error-box{background:#3a2020;color:#f0a89f;border-radius:6px;padding:12px 14px;font-size:12px;line-height:1.6;margin-top:10px;}
+  .badge-margin{display:inline-block;margin-top:6px;font-size:11.5px;padding:4px 10px;border-radius:999px;}
+  .badge-good{background:#1e3423;color:var(--good);} .badge-bad{background:#3a2020;color:var(--bad);}
+  .receipt-empty{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:40px 20px;text-align:center;color:var(--ink-mute);font-size:13px;}
+  .mode-toggle{display:flex;gap:8px;margin-bottom:14px;}
+  .mode-btn{flex:1;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-mute);font-family:inherit;font-size:11.5px;padding:9px 8px;border-radius:7px;cursor:pointer;line-height:1.3;}
+  .mode-btn.active{color:var(--bg);background:var(--ink-light);border-color:var(--ink-light);}
+  .form-actions{display:flex;gap:10px;margin-top:14px;}
+  .row-actions button{margin-left:6px;}
+  .sync-pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;padding:5px 12px;border-radius:999px;}
+  .sync-pill .sdot{width:7px;height:7px;border-radius:50%;}
+  .sync-ok{background:#1e3423;color:var(--good);} .sync-ok .sdot{background:var(--good);}
+  .sync-warn{background:#332b16;color:#e0bf6b;} .sync-warn .sdot{background:#e0bf6b;}
+  .sync-off{background:var(--panel-2);color:var(--ink-mute);} .sync-off .sdot{background:var(--ink-mute);}
+  .sync-err{background:#3a2020;color:var(--bad);} .sync-err .sdot{background:var(--bad);}
+  .headerbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;}
+  .steps{counter-reset:step;margin:0;padding:0;list-style:none;}
+  .steps li{counter-increment:step;position:relative;padding:0 0 16px 30px;font-size:12.5px;line-height:1.7;color:var(--ink-light);}
+  .steps li::before{content:counter(step);position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-mute);font-size:11px;display:flex;align-items:center;justify-content:center;}
+  .steps code{background:var(--panel-2);padding:1px 6px;border-radius:4px;font-size:11.5px;}
+  pre.codeblock{background:#0f1216;border:1px solid var(--line);border-radius:8px;padding:14px;font-size:11px;line-height:1.6;overflow-x:auto;white-space:pre;}
+  .wizard-step{border-top:1px dashed var(--line);padding-top:16px;margin-top:16px;}
+  .wizard-step:first-child{border-top:none;padding-top:0;margin-top:0;}
+  .wizard-step h3{font-family:'Space Grotesk',sans-serif;font-size:12.5px;margin:0 0 10px;color:var(--ink-light);}
+  .map-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;}
+  @media (max-width:640px){.map-grid{grid-template-columns:1fr;}}
+  .map-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;}
+  .map-row label{color:var(--ink-mute);}
+  .map-row .req{color:var(--accent);}
+  .map-row select{width:170px;text-align:left;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-light);font-family:inherit;font-size:12px;padding:5px 6px;border-radius:5px;}
+  .mkt-checks{display:flex;flex-wrap:wrap;gap:8px;}
+  .mkt-check{display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:6px 12px 6px 8px;font-size:12px;cursor:pointer;}
+  .mkt-check input{margin:0;}
+  .radio-row{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+  .radio-opt{display:flex;align-items:center;gap:8px;font-size:12.5px;}
+  .preview-note{font-size:12px;color:var(--ink-mute);margin-bottom:10px;line-height:1.6;}
+  .preview-scroll{max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="headerbar">
+      <div>
+        <h1>Sistema de precificação por SKU</h1>
+        <p>Cadastre cada produto uma vez com seu custo e marketplace, e o sistema recalcula preço e margem automaticamente sempre que você mudar uma taxa. Nada de recalcular na mão a cada venda.</p>
+      </div>
+      <span class="sync-pill sync-off" id="syncPill"><span class="sdot"></span><span id="syncPillText">Verificando...</span></span>
+    </div>
+    <div class="disclaimer" id="topDisclaimer"></div>
+    <div class="storagenote" id="storageNote"></div>
+  </header>
+
+  <nav class="maintabs">
+    <button data-view="produtos" class="active">Produtos</button>
+    <button data-view="marketplaces">Marketplaces</button>
+    <button data-view="padroes">Padrões da empresa</button>
+    <button data-view="sync">Sincronização (Google Sheets)</button>
+  </nav>
+
+  <section id="view-produtos" class="view active">
+    <div class="metrics" id="metrics"></div>
+    <p class="sub" style="margin:-8px 0 14px;">"Margem" aqui é sempre sobre o valor que sobra na sua mão depois do marketplace tirar a parte dele -- não sobre o preço de venda total. O recibo de cada produto mostra as duas, lado a lado.</p>
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="Buscar por SKU ou nome">
+      <select id="filterMkt"></select>
+      <select id="sortBy">
+        <option value="margin_asc">Margem: menor primeiro</option>
+        <option value="margin_desc">Margem: maior primeiro</option>
+        <option value="name">Nome (A-Z)</option>
+        <option value="profit_desc">Lucro: maior primeiro</option>
+      </select>
+      <div class="spacer"></div>
+      <button class="btn" id="downloadTemplateBtn">Baixar modelo de planilha</button>
+      <button class="btn" id="importBtnOpen">Importar planilha</button>
+      <button class="btn" id="exportBtnOpen">Exportar planilha</button>
+      <button class="btn" id="exportEditBtnOpen">Exportar p/ edição em massa</button>
+      <button class="btn primary" id="newSkuBtn">+ Novo produto</button>
+    </div>
+
+    <div id="skuForm" class="card" style="display:none;"></div>
+    <div id="importWizard" class="card" style="display:none;"></div>
+    <div id="exportWizard" class="card" style="display:none;"></div>
+    <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" style="display:none;">
+
+    <div class="prod-grid">
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div id="tableWrap"></div>
+      </div>
+      <div class="receipt-outer" id="receiptOuter"></div>
+    </div>
+  </section>
+
+  <section id="view-marketplaces" class="view">
+    <div class="toolbar">
+      <div class="spacer"></div>
+      <button class="btn primary" id="newMktBtn">+ Adicionar marketplace</button>
+    </div>
+    <div class="mkt-cards" id="mktCards"></div>
+  </section>
+
+  <section id="view-padroes" class="view">
+    <div class="card">
+      <h2>Padrões usados ao cadastrar um novo produto</h2>
+      <p class="sub">Preenchem automaticamente o formulário de novo produto. Depois de criado, cada produto guarda seus próprios valores e pode ser editado individualmente sem afetar os demais.</p>
+      <div class="field"><label>Custo fixo alocado por unidade -- R$</label><input type="number" step="0.01" id="pFixedCost"></div>
+      <div class="field"><label>Outros custos diversos -- R$</label><input type="number" step="0.01" id="pMisc"></div>
+      <div class="field"><label>Imposto sobre a venda -- %</label><input type="number" step="0.01" id="pTax"></div>
+      <div class="field"><label>Marketing / Ads -- %</label><input type="number" step="0.01" id="pMarketing"></div>
+      <div class="field"><label>Cupom pago pelo vendedor -- R$</label><input type="number" step="0.01" id="pCoupon"></div>
+      <div class="field"><label>Frete: ganho/subsídio líquido -- R$</label><input type="number" step="0.01" id="pFreight"></div>
+    </div>
+    <div class="card">
+      <h2>Backup dos dados</h2>
+      <p class="sub">O arquivo é local a este navegador. Exporte um backup em JSON antes de limpar o cache, trocar de computador ou atualizar este arquivo HTML.</p>
+      <div class="form-actions">
+        <button class="btn" id="exportBtn">Exportar dados (JSON)</button>
+        <button class="btn" id="importBtn">Importar dados (JSON)</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none;">
+        <button class="btn danger" id="resetBtn">Restaurar padrão de fábrica</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-sync" class="view">
+    <div class="card">
+      <h2>Status da conexão</h2>
+      <p class="sub" id="syncStatusDetail">Verificando...</p>
+      <div class="field"><label>URL do Web App do Google Apps Script</label><input type="text" id="gasUrlInput" style="width:340px;text-align:left;" placeholder="https://script.google.com/macros/s/AAAA.../exec"></div>
+      <div class="form-actions">
+        <button class="btn primary" id="connectBtn">Conectar</button>
+        <button class="btn" id="syncNowBtn">Sincronizar agora</button>
+        <button class="btn danger" id="disconnectBtn">Desconectar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Passo a passo (uma vez só)</h2>
+      <p class="sub">Isso cria uma planilha Google que funciona como banco de dados. Leva uns 5 minutos e você faz isso uma única vez.</p>
+      <ol class="steps">
+        <li>Crie uma planilha nova em <code>sheets.google.com</code> -- pode ser em branco, o sistema cria as abas sozinho.</li>
+        <li>No menu, vá em <code>Extensões → Apps Script</code>.</li>
+        <li>Apague o conteúdo do arquivo <code>Code.gs</code> que abrir e cole o código abaixo no lugar.</li>
+        <li>Clique em <code>Implantar → Nova implantação</code>. Em "Tipo", escolha <code>App da Web</code>.</li>
+        <li>Em "Executar como", deixe <code>Eu (seu e-mail)</code>. Em "Quem pode acessar", escolha <code>Qualquer pessoa</code> -- isso é obrigatório, senão o navegador não consegue falar com o script.</li>
+        <li>Clique em <code>Implantar</code>, autorize as permissões pedidas (é o Google pedindo confirmação de que você mesmo está rodando seu próprio script) e copie a <strong>URL do app da Web</strong> gerada.</li>
+        <li>Cole essa URL no campo acima e clique em <code>Conectar</code>.</li>
+      </ol>
+      <p class="sub" style="margin-top:10px;">Se você editar o código do Apps Script depois, precisa fazer <code>Implantar → Gerenciar implantações → editar (ícone de lápis) → Nova versão</code> para as mudanças valerem -- só salvar o arquivo não atualiza a URL publicada.</p>
+    </div>
+
+    <div class="card">
+      <h2>Reaproveitando isso para vários clientes</h2>
+      <p class="sub">Não existe forma de gerar automaticamente a planilha e a URL de um clique só -- isso depende da conta do Google de cada cliente e a Deploy do Apps Script não é copiada junto quando você duplica uma planilha (limitação do próprio Google, não deste sistema). Mas dá pra reduzir os 7 passos acima a só 3 depois da primeira vez:</p>
+      <ol class="steps">
+        <li>Faça a configuração da aba acima <strong>uma única vez</strong>, numa planilha que vai virar seu "modelo mestre".</li>
+        <li>Para cada cliente novo: abra o modelo mestre e faça <code>Arquivo → Fazer uma cópia</code> -- o código do Apps Script vai junto automaticamente na cópia.</li>
+        <li>Na cópia, ainda assim é preciso repetir só o passo de implantar: <code>Implantar → Nova implantação → App da Web</code> (o código já está lá, só falta gerar a URL própria desse cliente) e colar a URL nova nesse arquivo HTML entregue a ele.</li>
+      </ol>
+      <p class="sub">Isso garante que os dados de cada cliente ficam isolados em planilhas separadas, o que aliás é o correto -- uma URL só compartilhada entre clientes misturaria os produtos de todo mundo numa única planilha.</p>
+    </div>
+
+    <div class="card">
+      <h2>Código para colar no Apps Script</h2>
+      <div class="form-actions" style="margin:0 0 10px;"><button class="btn small" id="copyCodeBtn">Copiar código</button></div>
+      <pre class="codeblock" id="gasCode"></pre>
+    </div>
+  </section>
+</div>
+
+<script>
+const STORAGE_KEY = 'mkt_pricing_system_v1';
+
+function defaultProfiles(){
+  return [
+    {id:'shopee', label:'Shopee', color:'#ee4d2d', confidence:'alta',
+      note:'Percentuais calculados a partir de um pedido real conferido pelo usuário: comissão 17,63% + taxa de serviço 3,44% + taxa de transação 1,96% + R$4,00 fixo = R$14,11 sobre R$43,89. Em mar/2026 a Shopee teria passado a cobrar por faixa de preço (ex.: até R$79,99 = 20% + R$4; acima de R$200 = 14% + R$26), segundo fontes não oficiais -- confirme na Central do Vendedor se o seu produto mudou de faixa.',
+      commission:17.63, service:3.44, transaction:1.96, fixedFee:4.00},
+    {id:'mercadolivre', label:'Mercado Livre', color:'#ffe600', confidence:'baixa',
+      note:'Não encontrei fonte oficial verificada com o percentual exato. Faixas relatadas por terceiros: Clássico 11% a 14%, Premium 16% a 19% (varia por categoria), mais custo fixo de aprox. R$5,50 a R$6,75 em itens abaixo de R$79. Confirme na Central do Vendedor.',
+      commission:13, service:0, transaction:0, fixedFee:6.50},
+    {id:'amazon', label:'Amazon', color:'#146eb4', confidence:'baixa',
+      note:'Faixa geral relatada por terceiros: comissão entre 8% e 15%, podendo chegar a 20% em categorias específicas. Não inclui comissão mínima por item (aprox. R$1,00) nem mensalidade do plano Profissional (aprox. R$19/mês). Confirme no Seller Central.',
+      commission:12, service:0, transaction:0, fixedFee:0},
+    {id:'shein', label:'Shein', color:'#ff5a9e', confidence:'media',
+      note:'Diversas fontes de terceiros convergem em 16% sobre o valor do produto após cupons, sem taxa fixa por item. Pode haver isenção temporária para novos vendedores. Confirme na página oficial "Política de Comissão" da Shein.',
+      commission:16, service:0, transaction:0, fixedFee:0},
+    {id:'custom', label:'Personalizado', color:'#8c8c88', confidence:'baixa',
+      note:'Preencha com os valores reais do canal de venda que você quer simular.',
+      commission:0, service:0, transaction:0, fixedFee:0}
+  ].map(p => Object.assign({dualAdPrice:false, variableFreight:false}, p));
+}
+
+function defaultState(){
+  const profiles = defaultProfiles();
+  return {
+    profiles,
+    padroes:{fixedCost:0, misc:0, taxPct:0, marketingPct:0, coupon:0, freightNet:0},
+    skus:[
+      {id:'demo1', sku:'DEMO-001', name:'Produto de exemplo (seu pedido real)', marketplaceId:'shopee',
+       cogs:0, fixedCost:0, misc:0, taxPct:0, marketingPct:0, coupon:0.88, freightNet:0,
+       mode:'price', price:43.89, marginTarget:20}
+    ],
+    selectedSkuId:'demo1'
+  };
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return defaultState();
+    const parsed = JSON.parse(raw);
+    if(!parsed.profiles || !parsed.skus) return defaultState();
+    return parsed;
+  }catch(e){
+    console.warn('Não foi possível ler o armazenamento local, usando dados padrão.', e);
+    return defaultState();
+  }
+}
+
+let state = loadState();
+let editingSkuId = null;
+let gasUrl = localStorage.getItem('mkt_pricing_gas_url') || '';
+let syncTimer = null;
+let syncing = false;
+let lastSyncOk = null;
+let lastSyncTime = null;
+let lastSyncError = '';
+
+function saveState(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch(e){ console.warn('Não foi possível salvar no armazenamento local.', e); }
+  scheduleSync();
+}
+
+function scheduleSync(){
+  if(!gasUrl) { renderSyncPill(); return; }
+  clearTimeout(syncTimer);
+  renderSyncPill('pending');
+  syncTimer = setTimeout(pushToSheets, 1000);
+}
+
+async function pushToSheets(){
+  if(!gasUrl) return;
+  syncing = true;
+  renderSyncPill('syncing');
+  try{
+    const res = await fetch(gasUrl, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'saveAll', state})
+    });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Erro desconhecido retornado pelo script.');
+    lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
+  }catch(err){
+    lastSyncOk = false; lastSyncError = err.message || String(err);
+  }
+  syncing = false;
+  renderSyncPill();
+  if(document.getElementById('view-sync').classList.contains('active')) renderSyncView();
+}
+
+async function pullFromSheets(showAlerts){
+  if(!gasUrl) return;
+  syncing = true;
+  renderSyncPill('syncing');
+  try{
+    const res = await fetch(gasUrl, {method:'GET'});
+    const data = await res.json();
+    if(!data.profiles || !data.skus) throw new Error('A planilha respondeu, mas sem o formato esperado. Confira se o código do Apps Script foi colado certo.');
+    if(data.profiles.length === 0){
+      // planilha ainda sem marketplaces cadastrados (primeira conexão) -- envia os dados locais para lá em vez de apagar tudo
+      await pushToSheets();
+    } else {
+      data.skus.forEach(normalizeSku);
+      data.profiles.forEach(normalizeProfile);
+      state = {
+        profiles: data.profiles,
+        skus: data.skus,
+        padroes: Object.keys(data.padroes||{}).length ? normalizePadroes(data.padroes) : state.padroes,
+        selectedSkuId: state.selectedSkuId
+      };
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+      renderProdutos();
+    }
+    lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
+    if(showAlerts) alert('Sincronizado com sucesso.');
+  }catch(err){
+    lastSyncOk = false; lastSyncError = err.message || String(err);
+    if(showAlerts) alert('Não foi possível sincronizar: ' + lastSyncError);
+  }
+  syncing = false;
+  renderSyncPill();
+  if(document.getElementById('view-sync').classList.contains('active')) renderSyncView();
+}
+
+function normalizeSku(s){
+  ['cogs','fixedCost','misc','taxPct','marketingPct','coupon','freightNet','price','marginTarget'].forEach(k=> s[k] = Number(s[k])||0);
+  s.costOverride = (s.costOverride === true || s.costOverride === 'TRUE' || s.costOverride === 'true' || s.costOverride === 1);
+}
+function normalizeProfile(p){
+  ['commission','service','transaction','fixedFee'].forEach(k=> p[k] = Number(p[k])||0);
+  p.dualAdPrice = (p.dualAdPrice === true || p.dualAdPrice === 'TRUE' || p.dualAdPrice === 'true' || p.dualAdPrice === 1);
+  p.variableFreight = (p.variableFreight === true || p.variableFreight === 'TRUE' || p.variableFreight === 'true' || p.variableFreight === 1);
+}
+function normalizePadroes(p){
+  const out = {};
+  ['fixedCost','misc','taxPct','marketingPct','coupon','freightNet'].forEach(k=> out[k] = Number(p[k])||0);
+  return out;
+}
+
+function renderSyncPill(forceState){
+  const pill = document.getElementById('syncPill');
+  const txt = document.getElementById('syncPillText');
+  if(!gasUrl){
+    pill.className = 'sync-pill sync-off';
+    txt.textContent = 'Somente neste navegador';
+    return;
+  }
+  const st = forceState || (syncing ? 'syncing' : (lastSyncOk===false ? 'error' : 'ok'));
+  if(st==='pending'){ pill.className='sync-pill sync-warn'; txt.textContent='Alterações pendentes...'; }
+  else if(st==='syncing'){ pill.className='sync-pill sync-warn'; txt.textContent='Sincronizando...'; }
+  else if(st==='error'){ pill.className='sync-pill sync-err'; txt.textContent='Erro ao sincronizar'; }
+  else { pill.className='sync-pill sync-ok'; txt.textContent='Sincronizado com Google Sheets'; }
+}
+
+function renderSyncView(){
+  document.getElementById('gasUrlInput').value = gasUrl;
+  const detail = document.getElementById('syncStatusDetail');
+  if(!gasUrl){
+    detail.textContent = 'Ainda não conectado. Os dados estão salvos só neste navegador -- siga o passo a passo abaixo para ligar a uma planilha Google e ter um backup que não depende deste computador.';
+  } else if(syncing){
+    detail.textContent = 'Sincronizando com a planilha agora...';
+  } else if(lastSyncOk===false){
+    detail.textContent = 'Conectado, mas a última tentativa falhou: ' + lastSyncError;
+  } else if(lastSyncTime){
+    detail.textContent = 'Conectado. Última sincronização bem-sucedida às ' + lastSyncTime.toLocaleTimeString('pt-BR') + '.';
+  } else {
+    detail.textContent = 'Conectado. Aguardando primeira sincronização.';
+  }
+}
+
+
+const brl = v => (isFinite(v)?v:0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const pct = v => (isFinite(v)?v:0).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
+const profileOf = id => state.profiles.find(p=>p.id===id) || state.profiles[0];
+const uid = () => 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+function roundToBreakpoint(v){
+  if(!isFinite(v) || v<=0) return 0;
+  const m = Math.ceil(v/5)*5;
+  return Math.round((m-0.10)*100)/100;
+}
+function adPrices(price, profile){
+  const p20 = roundToBreakpoint(price*1.20);
+  let p40 = null;
+  if(profile.dualAdPrice){
+    p40 = roundToBreakpoint(price*1.40);
+    const minGap = 10.00; // garante que o valor "antes" pareça de verdade maior -- sem isso, o arredondamento independente às vezes deixa os dois só R$5 (uma quebra) de distância
+    if(p40 - p20 < minGap){
+      p40 = roundToBreakpoint(p20 + minGap);
+    }
+  }
+  return {p20, p40};
+}
+
+function effectiveCompanyCosts(sku){
+  if(sku.costOverride){
+    return {fixedCost: sku.fixedCost, misc: sku.misc, taxPct: sku.taxPct, marketingPct: sku.marketingPct};
+  }
+  return {fixedCost: state.padroes.fixedCost, misc: state.padroes.misc, taxPct: state.padroes.taxPct, marketingPct: state.padroes.marketingPct};
+}
+
+function calcSku(profile, sku){
+  const cc = effectiveCompanyCosts(sku);
+  const c = profile.commission/100, s = profile.service/100, t = profile.transaction/100;
+  const tax = cc.taxPct/100, mk = cc.marketingPct/100;
+  const mktPct = c+s+t;                                    // % que o marketplace tira do preço de venda
+  const mktFixed = profile.fixedFee + sku.coupon - sku.freightNet; // valores fixos do marketplace
+  const companyCosts = sku.cogs + cc.fixedCost + cc.misc; // custos fixos da empresa
+  let price;
+  if(sku.mode === 'margin'){
+    // Margem definida sobre o valor que sobra na mão do vendedor (após o marketplace tirar a parte dele),
+    // e não sobre o preço de venda total -- é assim que o valor realmente é sentido no caixa.
+    const m = sku.marginTarget/100;
+    const denom = (1 - mktPct) * (1 - m) - (tax + mk);
+    if(denom <= 0) return {error:true, m, mktPct, tax, mk};
+    const numer = companyCosts + mktFixed * (1 - m);
+    price = numer / denom;
+    if(!isFinite(price) || price <= 0){ return {error:true, m, mktPct, tax, mk}; }
+    const checkNet = price*(1-mktPct) - mktFixed;
+    if(checkNet <= 0){ return {error:true, m, mktPct, tax, mk}; }
+  } else {
+    price = sku.price;
+  }
+  const commissionVal = c*price, serviceVal = s*price, transactionVal = t*price;
+  const taxVal = tax*price, marketingVal = mk*price;
+  const feesTotal = commissionVal+serviceVal+transactionVal+profile.fixedFee;
+  const netMarketplace = price - feesTotal - sku.coupon + sku.freightNet;
+  const profit = netMarketplace - sku.cogs - cc.fixedCost - cc.misc - taxVal - marketingVal;
+  const marginOnNet = netMarketplace !== 0 ? (profit/netMarketplace*100) : 0;
+  const marginOnPrice = price>0 ? (profit/price*100) : 0;
+  return {price, commissionVal, serviceVal, transactionVal, fixedFee:profile.fixedFee,
+    coupon:sku.coupon, freightNet:sku.freightNet, feesTotal, netMarketplace,
+    cogs:sku.cogs, fixedCost:cc.fixedCost, misc:cc.misc, taxVal, marketingVal, profit,
+    marginPct: marginOnNet, marginOnNet, marginOnPrice};
+}
+
+function renderTopDisclaimer(){
+  document.getElementById('topDisclaimer').innerHTML =
+    'Os percentuais pré-preenchidos por marketplace são valores de referência -- só os da Shopee foram conferidos contra um pedido real; os demais vêm de blogs e calculadoras de terceiros, não das páginas oficiais dos marketplaces, e taxas mudam com frequência por categoria, tipo de anúncio e reputação do vendedor. Edite os campos na aba Marketplaces com os valores exatos do seu Seller Center / Central do Vendedor.';
+}
+
+// ---------- navigation ----------
+document.querySelectorAll('nav.maintabs button').forEach(b=>{
+  b.onclick = ()=>{
+    document.querySelectorAll('nav.maintabs button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('view-'+b.dataset.view).classList.add('active');
+    if(b.dataset.view==='marketplaces') renderMarketplaces();
+    if(b.dataset.view==='padroes') renderPadroes();
+    if(b.dataset.view==='produtos') renderProdutos();
+    if(b.dataset.view==='sync') renderSyncView();
+  };
+});
+
+// ---------- PRODUTOS VIEW ----------
+function filteredSortedSkus(){
+  const q = (document.getElementById('search').value||'').toLowerCase();
+  const mktFilter = document.getElementById('filterMkt').value;
+  const sortBy = document.getElementById('sortBy').value;
+  let rows = state.skus.map(sku=>({sku, r: calcSku(profileOf(sku.marketplaceId), sku)}));
+  if(q) rows = rows.filter(x => x.sku.sku.toLowerCase().includes(q) || x.sku.name.toLowerCase().includes(q));
+  if(mktFilter) rows = rows.filter(x => x.sku.marketplaceId === mktFilter);
+  rows.sort((a,b)=>{
+    const ma = a.r.error ? -Infinity : a.r.marginPct, mb = b.r.error ? -Infinity : b.r.marginPct;
+    const pa = a.r.error ? -Infinity : a.r.profit, pb = b.r.error ? -Infinity : b.r.profit;
+    if(sortBy==='margin_asc') return ma-mb;
+    if(sortBy==='margin_desc') return mb-ma;
+    if(sortBy==='profit_desc') return pb-pa;
+    return a.sku.name.localeCompare(b.sku.name);
+  });
+  return rows;
+}
+
+function renderMetrics(){
+  const rows = state.skus.map(sku=>calcSku(profileOf(sku.marketplaceId), sku));
+  const valid = rows.filter(r=>!r.error);
+  const avgMargin = valid.length ? valid.reduce((a,r)=>a+r.marginPct,0)/valid.length : 0;
+  const losing = rows.filter(r=>r.error || r.marginPct<0).length;
+  document.getElementById('metrics').innerHTML = `
+    <div class="metric"><div class="k">Produtos cadastrados</div><div class="v">${state.skus.length}</div></div>
+    <div class="metric"><div class="k">Margem média</div><div class="v">${pct(avgMargin)}</div></div>
+    <div class="metric"><div class="k">Produtos no prejuízo</div><div class="v" style="color:${losing?'var(--bad)':'var(--good)'}">${losing}</div></div>
+  `;
+}
+
+function renderFilterOptions(){
+  const sel = document.getElementById('filterMkt');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Todos os marketplaces</option>' +
+    state.profiles.map(p=>`<option value="${p.id}">${p.label}</option>`).join('');
+  sel.value = current;
+}
+
+function renderTable(){
+  const rows = filteredSortedSkus();
+  const wrap = document.getElementById('tableWrap');
+  if(state.skus.length===0){
+    wrap.innerHTML = `<div class="empty"><div class="big">Nenhum produto cadastrado</div>Adicione seu primeiro SKU para começar a calcular margens automaticamente.</div>`;
+    return;
+  }
+  if(rows.length===0){
+    wrap.innerHTML = `<div class="empty">Nenhum produto encontrado com esse filtro.</div>`;
+    return;
+  }
+  const hasDualAny = state.profiles.some(p=>p.dualAdPrice);
+  const extraCols = hasDualAny ? 2 : 1;
+  wrap.innerHTML = `<table>
+    <thead><tr>
+      <th>SKU</th><th>Nome</th><th>Marketplace</th>
+      <th class="num">Preço</th><th class="num">Lucro líquido</th><th class="num">Margem</th>
+      <th class="num">Valor anúncio (+20%)</th>${hasDualAny ? '<th class="num">Valor anúncio (+40%)</th>' : ''}<th></th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(({sku,r})=>{
+        const p = profileOf(sku.marketplaceId);
+        const selected = sku.id===state.selectedSkuId ? 'selected' : '';
+        const costTag = sku.costOverride ? ' <span class="confidence conf-media" style="margin-left:4px;">custo alterado</span>' : '';
+        if(r.error){
+          return `<tr data-id="${sku.id}" class="${selected}">
+            <td>${sku.sku}</td><td>${sku.name}${costTag}</td>
+            <td><span class="mkt-dot" style="background:${p.color}"></span>${p.label}</td>
+            <td class="num" colspan="${3+extraCols}" style="color:var(--bad)">Margem desejada inviável -- taxas somadas excedem 100%</td>
+            <td class="row-actions"><button class="btn small" data-edit="${sku.id}">Editar</button><button class="btn small danger" data-del="${sku.id}">Excluir</button></td>
+          </tr>`;
+        }
+        const ad = adPrices(r.price, p);
+        return `<tr data-id="${sku.id}" class="${selected}">
+          <td>${sku.sku}</td><td>${sku.name}${costTag}</td>
+          <td><span class="mkt-dot" style="background:${p.color}"></span>${p.label}</td>
+          <td class="num">${brl(r.price)}</td>
+          <td class="num ${r.profit>=0?'pos':'neg'}">${brl(r.profit)}</td>
+          <td class="num ${r.marginPct>=0?'pos':'neg'}">${pct(r.marginPct)}</td>
+          <td class="num">${brl(ad.p20)}</td>${hasDualAny ? `<td class="num">${ad.p40!==null ? brl(ad.p40) : '--'}</td>` : ''}
+          <td class="row-actions"><button class="btn small" data-edit="${sku.id}">Editar</button><button class="btn small danger" data-del="${sku.id}">Excluir</button></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+
+  wrap.querySelectorAll('tbody tr').forEach(tr=>{
+    tr.addEventListener('click', (e)=>{
+      if(e.target.closest('button')) return;
+      state.selectedSkuId = tr.dataset.id;
+      saveState();
+      renderTable();
+      renderReceiptPanel();
+    });
+  });
+  wrap.querySelectorAll('[data-edit]').forEach(b=> b.onclick = () => openSkuForm(b.dataset.edit));
+  wrap.querySelectorAll('[data-del]').forEach(b=> b.onclick = () => deleteSku(b.dataset.del));
+}
+
+function renderReceiptPanel(){
+  const outer = document.getElementById('receiptOuter');
+  const sku = state.skus.find(s=>s.id===state.selectedSkuId);
+  if(!sku){
+    outer.innerHTML = `<div class="receipt-empty">Selecione um produto na tabela para ver o recibo completo de precificação.</div>`;
+    return;
+  }
+  const profile = profileOf(sku.marketplaceId);
+  const r = calcSku(profile, sku);
+  const line = (lbl, val, cls='') => `<div class="rline ${cls}"><span class="lbl">${lbl}</span><span class="val">${val<0?'-':''}${brl(Math.abs(val))}</span></div>`;
+
+  if(r.error){
+    outer.innerHTML = `<div class="torn"></div><div class="receipt">
+      <h2>Recibo de precificação</h2><p class="mkt-name">${sku.sku} -- ${sku.name}</p>
+      <div class="error-box">Não é possível atingir uma margem de ${pct(r.m*100)} sobre o valor recebido com essas taxas -- ou a conta fica negativa, ou não sobra nada de verdade na sua mão depois do marketplace. Taxas do marketplace: ${pct(r.mktPct*100)}. Imposto + marketing: ${pct((r.tax+r.mk)*100)}. Reduza a margem desejada ou revise as taxas.</div>
+    </div><div class="torn bottom"></div>`;
+    return;
+  }
+
+  const heroLabel = sku.mode==='margin' ? 'Preço de venda necessário' : 'Preço de venda cadastrado';
+  const ad = adPrices(r.price, profile);
+  outer.innerHTML = `<div class="torn"></div><div class="receipt">
+    <h2>Recibo de precificação</h2>
+    <p class="mkt-name">${sku.sku} -- ${sku.name} -- ${profile.label}</p>
+    ${sku.costOverride ? `<p class="sub" style="color:#a8791f;margin:-6px 0 10px;">&#9888; Custos da empresa alterados manualmente para este produto -- não usa mais os padrões do sistema.</p>` : ''}
+    <div class="price-hero"><div class="k">${heroLabel}</div><div class="v">${brl(r.price)}</div></div>
+    ${line('Preço do produto', r.price)}
+    ${line('Frete: ganho/subsídio líquido', r.freightNet, r.freightNet<0?'neg':(r.freightNet>0?'pos':''))}
+    ${line('Cupom pago pelo vendedor', -r.coupon, r.coupon>0?'neg':'')}
+    <div class="rline section"><span class="lbl">Taxas e encargos do marketplace</span><span class="val">-${brl(r.commissionVal+r.serviceVal+r.transactionVal+r.fixedFee)}</span></div>
+    ${line('Comissão ('+pct(profile.commission)+')', -r.commissionVal, 'neg')}
+    ${line('Taxa de serviço ('+pct(profile.service)+')', -r.serviceVal, 'neg')}
+    ${line('Taxa de transação ('+pct(profile.transaction)+')', -r.transactionVal, 'neg')}
+    ${line('Taxa fixa por item', -r.fixedFee, 'neg')}
+    <div class="divider"></div>
+    ${line('Valor que sobra na sua mão (após o marketplace)', r.netMarketplace, 'pos')}
+    <div class="rline section"><span class="lbl">Custos da empresa</span><span class="val"></span></div>
+    ${line('Custo do produto (CMV)', -r.cogs, r.cogs>0?'neg':'')}
+    ${line('Custo fixo alocado', -r.fixedCost, r.fixedCost>0?'neg':'')}
+    ${line('Outros custos diversos', -r.misc, r.misc>0?'neg':'')}
+    ${line('Imposto sobre a venda', -r.taxVal, r.taxVal>0?'neg':'')}
+    ${line('Marketing / Ads', -r.marketingVal, r.marketingVal>0?'neg':'')}
+    <div class="totals">
+      <div class="rline profit"><span class="lbl">Lucro líquido</span><span class="val" style="color:${r.profit>=0?'#3f7a4a':'#9c4a3f'}">${r.profit<0?'-':''}${brl(Math.abs(r.profit))}</span></div>
+      <div class="rline"><span class="lbl">Margem sobre o valor que sobrou na mão</span><span class="val">${pct(r.marginOnNet)}</span></div>
+      <div class="rline" style="opacity:.65;"><span class="lbl">Margem sobre o preço de venda total (referência)</span><span class="val">${pct(r.marginOnPrice)}</span></div>
+      <span class="badge-margin ${r.marginPct>=0?'badge-good':'badge-bad'}">${r.marginPct>=0?'Operação lucrativa':'Operação no prejuízo'}</span>
+    </div>
+    <div class="totals">
+      <div class="rline"><span class="lbl">Valor sugerido de anúncio (+20%)</span><span class="val">${brl(ad.p20)}</span></div>
+      ${profile.dualAdPrice ? `<div class="rline"><span class="lbl">Valor antes do anúncio (+40%)</span><span class="val">${brl(ad.p40)}</span></div>` : ''}
+    </div>
+  </div><div class="torn bottom"></div>`;
+}
+
+function openSkuForm(id){
+  closeImportWizard();
+  closeExportWizard();
+  editingSkuId = id || null;
+  const sku = editingSkuId ? state.skus.find(s=>s.id===editingSkuId) : {
+    id:null, sku:'', name:'', marketplaceId: state.profiles[0].id,
+    cogs:0, fixedCost: state.padroes.fixedCost, misc: state.padroes.misc,
+    taxPct: state.padroes.taxPct, marketingPct: state.padroes.marketingPct,
+    coupon: state.padroes.coupon, freightNet: state.padroes.freightNet,
+    mode:'price', price:0, marginTarget:20, costOverride:false
+  };
+  let costUnlocked = !!sku.costOverride;
+  let fmode = sku.mode;
+  const form = document.getElementById('skuForm');
+  form.style.display = 'block';
+
+  const mktSelectorHtml = !editingSkuId
+    ? `<div class="field textrow"><label>Marketplaces (selecione um ou mais -- o produto será cadastrado em cada um, já considerando as taxas de cada plataforma)</label>
+        <div class="mkt-checks">${state.profiles.map(p=>`<label class="mkt-check"><input type="checkbox" value="${p.id}" class="f-mkt-chk" ${p.id===sku.marketplaceId?'checked':''}><span class="mkt-dot" style="background:${p.color}"></span>${p.label}</label>`).join('')}</div>
+      </div>`
+    : `<div class="field"><label>Marketplace</label>
+        <select id="f_mkt_single">${state.profiles.map(p=>`<option value="${p.id}" ${p.id===sku.marketplaceId?'selected':''}>${p.label}</option>`).join('')}</select>
+      </div>`;
+
+  function costBlockHtml(){
+    if(costUnlocked){
+      return `<div class="card" style="background:var(--panel-2);border-color:var(--accent);padding:14px 16px;margin:4px 0 14px;">
+          <span class="confidence" style="background:#332b16;color:#e0bf6b;">Custo alterado manualmente para este produto</span>
+          <div class="grid2" style="margin-top:10px;">
+            <div class="field"><label>Custo fixo alocado -- R$</label><input type="number" step="0.01" id="f_fixedCost" value="${sku.fixedCost}"></div>
+            <div class="field"><label>Outros custos diversos -- R$</label><input type="number" step="0.01" id="f_misc" value="${sku.misc}"></div>
+            <div class="field"><label>Imposto sobre a venda -- %</label><input type="number" step="0.01" id="f_tax" value="${sku.taxPct}"></div>
+            <div class="field"><label>Marketing / Ads -- %</label><input type="number" step="0.01" id="f_marketing" value="${sku.marketingPct}"></div>
+          </div>
+          <button type="button" class="btn small" id="f_relock" style="margin-top:8px;">Usar os padrões da empresa novamente</button>
+        </div>`;
+    }
+    return `<div class="card" style="background:var(--panel-2);padding:14px 16px;margin:4px 0 14px;">
+        <p class="sub" style="margin:0 0 8px;">Custos da empresa (padrão do sistema -- editável na aba "Padrões da empresa"): Custo fixo ${brl(state.padroes.fixedCost)} &middot; Outros ${brl(state.padroes.misc)} &middot; Imposto ${state.padroes.taxPct}% &middot; Marketing ${state.padroes.marketingPct}%</p>
+        <button type="button" class="btn small" id="f_unlock">Desbloquear e editar manualmente para este produto</button>
+      </div>`;
+  }
+
+  function anyVariableFreight(){
+    if(!editingSkuId){
+      const els = form.querySelectorAll('.f-mkt-chk');
+      if(els.length === 0) return profileOf(sku.marketplaceId).variableFreight; // render inicial, DOM ainda não existe
+      return Array.from(els).filter(c=>c.checked).some(c => profileOf(c.value).variableFreight);
+    }
+    const singleEl = document.getElementById('f_mkt_single');
+    return profileOf(singleEl ? singleEl.value : sku.marketplaceId).variableFreight;
+  }
+
+  form.innerHTML = `
+    <h2>${editingSkuId ? 'Editar produto' : 'Novo produto'}</h2>
+    <div class="grid2">
+      <div class="field"><label>SKU / referência</label><input type="text" id="f_sku" style="width:180px;text-align:left;" value="${sku.sku}"></div>
+      <div class="field"><label>Nome do produto</label><input type="text" id="f_name" style="width:220px;text-align:left;" value="${sku.name}"></div>
+    </div>
+    ${mktSelectorHtml}
+    <div class="grid2">
+      <div class="field"><label>Custo do produto (CMV) -- R$</label><input type="number" step="0.01" id="f_cogs" value="${sku.cogs}"></div>
+      <div class="field"><label>Cupom pago pelo vendedor -- R$</label><input type="number" step="0.01" id="f_coupon" value="${sku.coupon}"></div>
+      <div class="field" id="f_freightRow" style="display:${anyVariableFreight()?'flex':'none'}"><label>Frete: ganho/subsídio líquido -- R$</label><input type="number" step="0.01" id="f_freight" value="${sku.freightNet}"></div>
+    </div>
+    <div id="f_costBlockWrap">${costBlockHtml()}</div>
+    <div class="mode-toggle">
+      <button type="button" class="mode-btn ${sku.mode==='price'?'active':''}" id="f_modePrice">Informar preço de venda</button>
+      <button type="button" class="mode-btn ${sku.mode==='margin'?'active':''}" id="f_modeMargin">Informar margem desejada</button>
+    </div>
+    <div class="field" id="f_priceRow" style="display:${sku.mode==='price'?'flex':'none'}"><label>Preço de venda -- R$</label><input type="number" step="0.01" id="f_price" value="${sku.price}"></div>
+    <div class="field" id="f_marginRow" style="display:${sku.mode==='margin'?'flex':'none'}"><label>Margem desejada -- % sobre o valor que sobra na mão (após o marketplace)</label><input type="number" step="0.1" id="f_marginTarget" value="${sku.marginTarget}"></div>
+    <div class="form-actions">
+      <button class="btn primary" id="f_save">Salvar produto</button>
+      <button class="btn" id="f_cancel">Cancelar</button>
+    </div>
+  `;
+
+  function bindCostBlockEvents(){
+    const unlockBtn = document.getElementById('f_unlock');
+    if(unlockBtn) unlockBtn.onclick = ()=>{ costUnlocked = true; document.getElementById('f_costBlockWrap').innerHTML = costBlockHtml(); bindCostBlockEvents(); };
+    const relockBtn = document.getElementById('f_relock');
+    if(relockBtn) relockBtn.onclick = ()=>{
+      costUnlocked = false;
+      sku.fixedCost = state.padroes.fixedCost; sku.misc = state.padroes.misc;
+      sku.taxPct = state.padroes.taxPct; sku.marketingPct = state.padroes.marketingPct;
+      document.getElementById('f_costBlockWrap').innerHTML = costBlockHtml(); bindCostBlockEvents();
+    };
+  }
+  bindCostBlockEvents();
+
+  if(!editingSkuId){
+    form.querySelectorAll('.f-mkt-chk').forEach(chk=>{
+      chk.addEventListener('change', ()=>{
+        document.getElementById('f_freightRow').style.display = anyVariableFreight() ? 'flex' : 'none';
+      });
+    });
+  } else {
+    document.getElementById('f_mkt_single').addEventListener('change', ()=>{
+      document.getElementById('f_freightRow').style.display = anyVariableFreight() ? 'flex' : 'none';
+    });
+  }
+  document.getElementById('f_modePrice').onclick = ()=>{
+    fmode='price';
+    document.getElementById('f_modePrice').classList.add('active');
+    document.getElementById('f_modeMargin').classList.remove('active');
+    document.getElementById('f_priceRow').style.display='flex';
+    document.getElementById('f_marginRow').style.display='none';
+  };
+  document.getElementById('f_modeMargin').onclick = ()=>{
+    fmode='margin';
+    document.getElementById('f_modeMargin').classList.add('active');
+    document.getElementById('f_modePrice').classList.remove('active');
+    document.getElementById('f_marginRow').style.display='flex';
+    document.getElementById('f_priceRow').style.display='none';
+  };
+  document.getElementById('f_cancel').onclick = closeSkuForm;
+  document.getElementById('f_save').onclick = ()=>{
+    const skuCode = document.getElementById('f_sku').value.trim();
+    const name = document.getElementById('f_name').value.trim();
+    if(!skuCode || !name){ alert('Preencha o SKU e o nome do produto.'); return; }
+    const marketplaceIds = editingSkuId
+      ? [document.getElementById('f_mkt_single').value]
+      : Array.from(form.querySelectorAll('.f-mkt-chk:checked')).map(c=>c.value);
+    if(marketplaceIds.length===0){ alert('Selecione ao menos um marketplace.'); return; }
+    const base = {
+      sku: skuCode, name,
+      cogs: parseFloat(document.getElementById('f_cogs').value)||0,
+      coupon: parseFloat(document.getElementById('f_coupon').value)||0,
+      freightNet: parseFloat((document.getElementById('f_freight')||{}).value)||0,
+      mode: fmode,
+      price: parseFloat(document.getElementById('f_price').value)||0,
+      marginTarget: parseFloat(document.getElementById('f_marginTarget').value)||0,
+      costOverride: costUnlocked,
+      fixedCost: costUnlocked ? (parseFloat((document.getElementById('f_fixedCost')||{}).value)||0) : state.padroes.fixedCost,
+      misc: costUnlocked ? (parseFloat((document.getElementById('f_misc')||{}).value)||0) : state.padroes.misc,
+      taxPct: costUnlocked ? (parseFloat((document.getElementById('f_tax')||{}).value)||0) : state.padroes.taxPct,
+      marketingPct: costUnlocked ? (parseFloat((document.getElementById('f_marketing')||{}).value)||0) : state.padroes.marketingPct
+    };
+    if(editingSkuId){
+      const idx = state.skus.findIndex(s=>s.id===editingSkuId);
+      state.skus[idx] = Object.assign({id:editingSkuId, marketplaceId: marketplaceIds[0]}, base);
+      state.selectedSkuId = editingSkuId;
+    } else {
+      const conflicts = marketplaceIds.filter(mid => state.skus.some(s => s.sku===skuCode && s.marketplaceId===mid));
+      if(conflicts.length){
+        const names = conflicts.map(id=>profileOf(id).label).join(', ');
+        if(!confirm(`Já existe um produto com o SKU "${skuCode}" em: ${names}. Sobrescrever esses e criar os demais?`)) return;
+      }
+      let firstId = null;
+      marketplaceIds.forEach(mid=>{
+        const existingIdx = state.skus.findIndex(s => s.sku===skuCode && s.marketplaceId===mid);
+        const newId = existingIdx!==-1 ? state.skus[existingIdx].id : uid();
+        if(!firstId) firstId = newId;
+        const data = Object.assign({id:newId, marketplaceId: mid}, base);
+        if(existingIdx!==-1) state.skus[existingIdx] = data; else state.skus.push(data);
+      });
+      state.selectedSkuId = firstId;
+    }
+    saveState();
+    closeSkuForm();
+    renderProdutos();
+  };
+}
+function closeSkuForm(){
+  editingSkuId = null;
+  document.getElementById('skuForm').style.display='none';
+  document.getElementById('skuForm').innerHTML='';
+}
+function deleteSku(id){
+  const sku = state.skus.find(s=>s.id===id);
+  if(!confirm(`Excluir o produto "${sku?sku.sku:id}"? Essa ação não pode ser desfeita.`)) return;
+  state.skus = state.skus.filter(s=>s.id!==id);
+  if(state.selectedSkuId===id) state.selectedSkuId = state.skus[0] ? state.skus[0].id : null;
+  saveState();
+  renderProdutos();
+}
+
+document.getElementById('newSkuBtn').onclick = ()=> { closeImportWizard(); closeExportWizard(); openSkuForm(null); };
+document.getElementById('search').addEventListener('input', renderTable);
+document.getElementById('filterMkt').addEventListener('change', renderTable);
+
+// ---------- EXPORTAÇÃO DE PLANILHA ----------
+function closeExportWizard(){
+  document.getElementById('exportWizard').style.display='none';
+  document.getElementById('exportWizard').innerHTML='';
+}
+function openMarketplacePicker(titleText, subtitleText, confirmLabel, onConfirm){
+  closeSkuForm();
+  closeImportWizard();
+  const box = document.getElementById('exportWizard');
+  box.style.display = 'block';
+  box.innerHTML = `
+    <h2>${titleText}</h2>
+    <p class="sub">${subtitleText}</p>
+    <div class="mkt-checks" style="margin-bottom:12px;">
+      ${state.profiles.map(p=>`<label class="mkt-check"><input type="checkbox" value="${p.id}" class="exp-mkt-chk" checked><span class="mkt-dot" style="background:${p.color}"></span>${p.label}</label>`).join('')}
+    </div>
+    <div class="form-actions" style="margin-bottom:10px;">
+      <button class="btn small" id="exp_selectAll">Selecionar todos</button>
+      <button class="btn small" id="exp_selectNone">Limpar seleção</button>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" id="exp_confirm">${confirmLabel}</button>
+      <button class="btn" id="exp_cancel">Cancelar</button>
+    </div>
+  `;
+  document.getElementById('exp_cancel').onclick = closeExportWizard;
+  document.getElementById('exp_selectAll').onclick = ()=> box.querySelectorAll('.exp-mkt-chk').forEach(c=>c.checked=true);
+  document.getElementById('exp_selectNone').onclick = ()=> box.querySelectorAll('.exp-mkt-chk').forEach(c=>c.checked=false);
+  document.getElementById('exp_confirm').onclick = ()=>{
+    const chosen = Array.from(box.querySelectorAll('.exp-mkt-chk:checked')).map(c=>c.value);
+    if(chosen.length===0){ alert('Selecione ao menos um marketplace.'); return; }
+    onConfirm(chosen);
+    closeExportWizard();
+  };
+}
+
+document.getElementById('exportBtnOpen').onclick = ()=>{
+  openMarketplacePicker(
+    'Exportar planilha',
+    'Escolha de quais marketplaces você quer exportar os produtos, com preço, margem e valores de anúncio já calculados.',
+    'Exportar (.csv)',
+    exportSpreadsheet
+  );
+};
+
+document.getElementById('exportEditBtnOpen').onclick = ()=>{
+  openMarketplacePicker(
+    'Exportar planilha de edição em massa',
+    'Gera uma planilha com os campos editáveis de cada produto (não os valores calculados). Edite no Excel/Sheets e reimporte pela opção "Importar planilha" -- escolhendo "sobrescrever" -- para atualizar tudo de uma vez.',
+    'Exportar para edição (.csv)',
+    exportEditSpreadsheet
+  );
+};
+
+function exportSpreadsheet(marketplaceIds){
+  const chosenSet = new Set(marketplaceIds);
+  const rows = state.skus.filter(s => chosenSet.has(s.marketplaceId));
+  if(rows.length === 0){ alert('Nenhum produto cadastrado nos marketplaces selecionados.'); return; }
+  const hasDualAny = marketplaceIds.some(id => profileOf(id).dualAdPrice);
+  const header = ['SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda','Lucro Líquido',
+    'Margem (sobre valor recebido)','Margem (sobre preço de venda)','Valor Anúncio (+20%)'];
+  if(hasDualAny) header.push('Valor Anúncio (+40%)');
+  const numBR = v => round2(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const pctBR = v => round2(v).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1})+'%';
+  const data = [header];
+  rows.forEach(sku=>{
+    const p = profileOf(sku.marketplaceId);
+    const r = calcSku(p, sku);
+    if(r.error){
+      const line = [sku.sku, sku.name, p.label, numBR(sku.cogs), 'inviável', 'inviável', 'inviável', 'inviável', ''];
+      if(hasDualAny) line.push('');
+      data.push(line);
+      return;
+    }
+    const ad = adPrices(r.price, p);
+    const line = [sku.sku, sku.name, p.label, numBR(sku.cogs), numBR(r.price), numBR(r.profit),
+      pctBR(r.marginOnNet), pctBR(r.marginOnPrice), numBR(ad.p20)];
+    if(hasDualAny) line.push(ad.p40!==null ? numBR(ad.p40) : '');
+    data.push(line);
+  });
+  const csv = '\uFEFF' + data.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `produtos-marketplaces-${stamp}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function round2(v){ return Math.round((v+Number.EPSILON)*100)/100; }
+
+function exportEditSpreadsheet(marketplaceIds){
+  const chosenSet = new Set(marketplaceIds);
+  const rows = state.skus.filter(s => chosenSet.has(s.marketplaceId));
+  if(rows.length === 0){ alert('Nenhum produto cadastrado nos marketplaces selecionados.'); return; }
+  const numBR = v => round2(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const header = ['SKU','Nome','Marketplace (referência -- não é reimportado, escolha o marketplace na hora de reimportar)',
+    'Custo do Produto (CMV)','Preço de Venda','Margem Desejada (%)','Cupom','Frete Líquido',
+    'Custo Fixo (só se custo alterado)','Outros Custos (só se custo alterado)','Imposto % (só se custo alterado)','Marketing % (só se custo alterado)'];
+  const data = [header];
+  rows.forEach(sku=>{
+    const p = profileOf(sku.marketplaceId);
+    data.push([
+      sku.sku, sku.name, p.label,
+      numBR(sku.cogs),
+      sku.mode==='price' ? numBR(sku.price) : '',
+      sku.mode==='margin' ? numBR(sku.marginTarget) : '',
+      numBR(sku.coupon), numBR(sku.freightNet),
+      sku.costOverride ? numBR(sku.fixedCost) : '',
+      sku.costOverride ? numBR(sku.misc) : '',
+      sku.costOverride ? numBR(sku.taxPct) : '',
+      sku.costOverride ? numBR(sku.marketingPct) : ''
+    ]);
+  });
+  const csv = '\uFEFF' + data.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `edicao-em-massa-${stamp}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('sortBy').addEventListener('change', renderTable);
+
+// ---------- IMPORTAÇÃO EM MASSA ----------
+const IMPORT_FIELDS = [
+  {key:'sku', label:'SKU / Referência', required:true, synonyms:['sku','referencia','ref','codigo','codigoproduto','codsku','codigodoproduto']},
+  {key:'name', label:'Nome do produto', required:true, synonyms:['nome','produto','nomedoproduto','descricao','descricaodoproduto','titulo']},
+  {key:'cogs', label:'Custo do produto (CMV)', required:true, synonyms:['custo','custoproduto','cmv','custocmv','custodoproduto','custounitario']},
+  {key:'price', label:'Preço de venda', required:false, synonyms:['preco','precodevenda','valorvenda','precovenda']},
+  {key:'marginTarget', label:'Margem desejada -- % sobre o valor recebido (%)', required:false, synonyms:['margem','margemdesejada','margemalvo','margemliquida','margem%']},
+  {key:'fixedCost', label:'Custo fixo alocado', required:false, synonyms:['custofixo','custofixoalocado']},
+  {key:'misc', label:'Outros custos', required:false, synonyms:['outroscustos','custosdiversos','outros']},
+  {key:'taxPct', label:'Imposto (%)', required:false, synonyms:['imposto','impostos','taxaimposto','imposto%']},
+  {key:'marketingPct', label:'Marketing (%)', required:false, synonyms:['marketing','ads','marketingads','marketing%']},
+  {key:'coupon', label:'Cupom pago pelo vendedor', required:false, synonyms:['cupom','cupomvendedor']},
+  {key:'freightNet', label:'Frete: ganho/subsídio líquido', required:false, synonyms:['frete','freteliquido','fretesubsidio','fretegratissubsidio']}
+];
+
+function normalizeHeader(s){
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9%]/g,'');
+}
+
+function parseNumberBR(v){
+  if(v === undefined || v === null || v==='') return NaN;
+  if(typeof v === 'number') return v;
+  let s = String(v).trim().replace(/R\$/gi,'').replace(/\s/g,'');
+  if(s === '') return NaN;
+  if(s.includes(',') && s.includes('.')){
+    s = s.replace(/\./g,'').replace(',', '.'); // "1.234,56" -> "1234.56"
+  } else if(s.includes(',')) {
+    s = s.replace(',', '.'); // "22,50" -> "22.50"
+  }
+  return parseFloat(s);
+}
+
+function detectDelimiter(text){
+  const firstLine = text.split(/\r?\n/)[0] || '';
+  const semi = (firstLine.match(/;/g)||[]).length;
+  const comma = (firstLine.match(/,/g)||[]).length;
+  const tab = (firstLine.match(/\t/g)||[]).length;
+  if(tab > semi && tab > comma) return '\t';
+  return semi >= comma ? ';' : ',';
+}
+
+function parseCSVText(text, delimiter){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field+='"'; i++; } else { inQuotes = false; }
+      } else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === delimiter){ row.push(field); field=''; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if(c === '\r'){ /* ignora, quebra tratada pelo \n */ }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+
+let importState = null; // { headers, rows, mapping, marketplaces, mode, batchValue, dupStrategy, preview }
+
+document.getElementById('downloadTemplateBtn').onclick = ()=>{
+  const headers = ['SKU','Nome','Custo do Produto (CMV)','Preço de Venda','Margem Desejada (%)','Custo Fixo','Outros Custos','Imposto (%)','Marketing (%)','Cupom','Frete Líquido'];
+  const example = ['CAM-001','Camiseta básica branca P','20,00','','30','0','0','6','0','0','0'];
+  const csv = '\uFEFF' + [headers, example].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'modelo-importacao-produtos.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+document.getElementById('importBtnOpen').onclick = ()=>{
+  closeSkuForm();
+  closeExportWizard();
+  document.getElementById('importFileInput').value = '';
+  document.getElementById('importFileInput').click();
+};
+document.getElementById('importFileInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const isCsv = /\.csv$/i.test(file.name);
+  if(isCsv){
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      try{
+        let text = ev.target.result;
+        if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        const delim = detectDelimiter(text);
+        const rows2d = parseCSVText(text, delim).map(r=>r.map(c=>c.trim()));
+        handleParsedRows(rows2d);
+      }catch(err){
+        alert('Não foi possível ler este CSV: ' + err.message);
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+  } else {
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      try{
+        const data = new Uint8Array(ev.target.result);
+        const wb = XLSX.read(data, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows2d = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+        handleParsedRows(rows2d);
+      }catch(err){
+        alert('Não foi possível ler este arquivo: ' + err.message + '. Confira se é um .xlsx/.xls válido.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+});
+
+function handleParsedRows(rows2d){
+  rows2d = rows2d.filter(r => r.some(c => String(c).trim() !== ''));
+  if(rows2d.length < 2){ alert('A planilha parece vazia -- inclua uma linha de cabeçalho e ao menos uma linha de produto.'); return; }
+  const headers = rows2d[0].map(h=>String(h));
+  const dataRows = rows2d.slice(1);
+  const mapping = {};
+  const normHeaders = headers.map(normalizeHeader);
+  const usedHeaderIdx = new Set();
+  // 1ª passada: correspondência exata
+  IMPORT_FIELDS.forEach(f=>{
+    const idx = normHeaders.findIndex((nh,i) => !usedHeaderIdx.has(i) && f.synonyms.includes(nh));
+    if(idx !== -1){ mapping[f.key] = idx; usedHeaderIdx.add(idx); } else { mapping[f.key] = -1; }
+  });
+  // 2ª passada: correspondência por trecho, só para campos ainda sem coluna
+  IMPORT_FIELDS.forEach(f=>{
+    if(mapping[f.key] !== -1) return;
+    const idx = normHeaders.findIndex((nh,i) => !usedHeaderIdx.has(i) && f.synonyms.some(syn => nh.includes(syn)));
+    if(idx !== -1){ mapping[f.key] = idx; usedHeaderIdx.add(idx); }
+  });
+  importState = {headers, rows: dataRows, mapping, marketplaces: [], mode:'price', batchValue: 20, dupStrategy:'overwrite'};
+  renderImportStep1();
+}
+
+function closeImportWizard(){
+  importState = null;
+  document.getElementById('importWizard').style.display='none';
+  document.getElementById('importWizard').innerHTML='';
+}
+
+function renderImportStep1(){
+  const box = document.getElementById('importWizard');
+  box.style.display = 'block';
+  box.innerHTML = `
+    <h2>Importar planilha -- 1. Conferir colunas</h2>
+    <p class="sub">Detectei ${importState.rows.length} linha(s) de produto e tentei adivinhar as colunas pelo nome do cabeçalho. Confira e ajuste onde precisar. SKU, Nome e Custo são obrigatórios.</p>
+    <div class="map-grid">
+      ${IMPORT_FIELDS.map(f => `
+        <div class="map-row">
+          <label>${f.label}${f.required?' <span class="req">*</span>':''}</label>
+          <select data-mapfield="${f.key}">
+            <option value="-1">-- não usar --</option>
+            ${importState.headers.map((h,i)=>`<option value="${i}" ${importState.mapping[f.key]===i?'selected':''}>${h}</option>`).join('')}
+          </select>
+        </div>`).join('')}
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" id="imp_step1_next">Continuar</button>
+      <button class="btn" id="imp_cancel1">Cancelar</button>
+    </div>
+  `;
+  box.querySelectorAll('[data-mapfield]').forEach(sel=>{
+    sel.addEventListener('change', ()=> importState.mapping[sel.dataset.mapfield] = parseInt(sel.value));
+  });
+  document.getElementById('imp_cancel1').onclick = closeImportWizard;
+  document.getElementById('imp_step1_next').onclick = ()=>{
+    const missing = IMPORT_FIELDS.filter(f=>f.required && importState.mapping[f.key]===-1);
+    if(missing.length){ alert('Falta mapear: ' + missing.map(f=>f.label).join(', ')); return; }
+    renderImportStep2();
+  };
+}
+
+function renderImportStep2(){
+  const box = document.getElementById('importWizard');
+  const colFillCount = (key) => {
+    const idx = importState.mapping[key];
+    if(idx===-1) return 0;
+    return importState.rows.filter(r => String(r[idx]??'').trim()!=='').length;
+  };
+  const priceFill = colFillCount('price');
+  const marginFill = colFillCount('marginTarget');
+  const hasPriceCol = importState.mapping.price !== -1;
+  const hasMarginCol = importState.mapping.marginTarget !== -1;
+  const defaultMode = marginFill > priceFill ? 'margin' : 'price'; // decide pelo que está de fato preenchido, não só pela coluna existir
+  box.innerHTML = `
+    <h2>Importar planilha -- 2. Marketplaces e modo de precificação</h2>
+    <div class="wizard-step">
+      <h3>Para quais marketplaces esses produtos valem?</h3>
+      <p class="sub">Selecione um ou mais. Se escolher mais de um, cada produto da planilha vira um cadastro separado por marketplace (com as taxas de cada um aplicadas automaticamente).</p>
+      <div class="mkt-checks">
+        ${state.profiles.map(p=>`<label class="mkt-check"><input type="checkbox" value="${p.id}" class="imp-mkt-chk"><span class="mkt-dot" style="background:${p.color}"></span>${p.label}</label>`).join('')}
+      </div>
+    </div>
+    <div class="wizard-step">
+      <h3>Modo de precificação desta importação</h3>
+      <div class="radio-row">
+        <label class="radio-opt"><input type="radio" name="impmode" value="price" ${defaultMode==='price'?'checked':''}> Usar preço de venda ${hasPriceCol ? `(preenchida em ${priceFill} de ${importState.rows.length} linhas)` : '-- planilha não tem essa coluna, defina um valor único abaixo'}</label>
+        <label class="radio-opt"><input type="radio" name="impmode" value="margin" ${defaultMode==='margin'?'checked':''}> Usar margem desejada ${hasMarginCol ? `(preenchida em ${marginFill} de ${importState.rows.length} linhas)` : '-- planilha não tem essa coluna, defina um valor único abaixo'}</label>
+      </div>
+      <div class="field" id="imp_batchValueRow"><label id="imp_batchValueLabel">Valor único a aplicar a todas as linhas</label><input type="number" step="0.01" id="imp_batchValue" value="20"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" id="imp_step2_next">Gerar prévia</button>
+      <button class="btn" id="imp_back1">Voltar</button>
+      <button class="btn" id="imp_cancel2">Cancelar</button>
+    </div>
+  `;
+  function syncBatchRowVisibility(){
+    const mode = box.querySelector('input[name=impmode]:checked').value;
+    const colMapped = mode==='price' ? hasPriceCol : hasMarginCol;
+    document.getElementById('imp_batchValueRow').style.display = colMapped ? 'none' : 'flex';
+    document.getElementById('imp_batchValueLabel').textContent = mode==='price' ? 'Preço de venda único (R$) para todas as linhas' : 'Margem desejada única (%, sobre o valor recebido) para todas as linhas';
+  }
+  box.querySelectorAll('input[name=impmode]').forEach(r=> r.addEventListener('change', syncBatchRowVisibility));
+  syncBatchRowVisibility();
+  document.getElementById('imp_cancel2').onclick = closeImportWizard;
+  document.getElementById('imp_back1').onclick = renderImportStep1;
+  document.getElementById('imp_step2_next').onclick = ()=>{
+    const chosen = Array.from(box.querySelectorAll('.imp-mkt-chk:checked')).map(c=>c.value);
+    if(chosen.length===0){ alert('Selecione ao menos um marketplace.'); return; }
+    importState.marketplaces = chosen;
+    importState.mode = box.querySelector('input[name=impmode]:checked').value;
+    importState.batchValue = parseFloat(document.getElementById('imp_batchValue').value)||0;
+    renderImportStep3();
+  };
+}
+
+function buildImportSku(row, marketplaceId){
+  const g = (key) => {
+    const idx = importState.mapping[key];
+    if(idx===undefined || idx===-1) return undefined;
+    const v = row[idx];
+    return v===undefined || v==='' ? undefined : v;
+  };
+  const sku = String(g('sku')||'').trim();
+  const num = (v, fallback) => { if(v===undefined) return fallback; const n = parseNumberBR(v); return isNaN(n) ? fallback : n; };
+  const priceMapped = num(g('price'), null);
+  const marginMapped = num(g('marginTarget'), null);
+  let mode = importState.mode, price = 0, marginTarget = 20;
+  if(mode==='price'){ price = priceMapped!==null ? priceMapped : importState.batchValue; }
+  else { marginTarget = marginMapped!==null ? marginMapped : importState.batchValue; }
+  const rowCostVals = {fixedCost:g('fixedCost'), misc:g('misc'), taxPct:g('taxPct'), marketingPct:g('marketingPct')};
+  const rowHasCostOverride = Object.values(rowCostVals).some(v => v !== undefined);
+  return {
+    id: uid(), sku, name: String(g('name')||'').trim(), marketplaceId,
+    cogs: num(g('cogs'), 0),
+    costOverride: rowHasCostOverride,
+    fixedCost: rowHasCostOverride ? num(rowCostVals.fixedCost, state.padroes.fixedCost) : state.padroes.fixedCost,
+    misc: rowHasCostOverride ? num(rowCostVals.misc, state.padroes.misc) : state.padroes.misc,
+    taxPct: rowHasCostOverride ? num(rowCostVals.taxPct, state.padroes.taxPct) : state.padroes.taxPct,
+    marketingPct: rowHasCostOverride ? num(rowCostVals.marketingPct, state.padroes.marketingPct) : state.padroes.marketingPct,
+    coupon: num(g('coupon'), state.padroes.coupon),
+    freightNet: num(g('freightNet'), state.padroes.freightNet),
+    mode, price, marginTarget
+  };
+}
+
+function renderImportStep3(){
+  const box = document.getElementById('importWizard');
+  const candidates = [];
+  importState.rows.forEach(row=>{
+    importState.marketplaces.forEach(mktId=> candidates.push(buildImportSku(row, mktId)));
+  });
+  const existingKeys = new Set(state.skus.map(s => s.sku+'::'+s.marketplaceId));
+  const dupCount = candidates.filter(c => existingKeys.has(c.sku+'::'+c.marketplaceId)).length;
+  importState.preview = candidates;
+
+  const rowsHtml = candidates.map(c=>{
+    const p = profileOf(c.marketplaceId);
+    const r = calcSku(p, c);
+    const isDup = existingKeys.has(c.sku+'::'+c.marketplaceId);
+    return `<tr>
+      <td>${c.sku}${isDup?' <span style="color:var(--accent);font-size:10.5px;">(já existe)</span>':''}</td>
+      <td>${c.name}</td>
+      <td><span class="mkt-dot" style="background:${p.color}"></span>${p.label}</td>
+      <td class="num">${r.error ? '--' : brl(r.price)}</td>
+      <td class="num ${!r.error && r.marginPct>=0?'pos':'neg'}">${r.error ? 'inviável' : pct(r.marginPct)}</td>
+    </tr>`;
+  }).join('');
+
+  box.innerHTML = `
+    <h2>Importar planilha -- 3. Conferir e confirmar</h2>
+    <p class="preview-note">${candidates.length} cadastro(s) serão criados (${importState.rows.length} linha(s) × ${importState.marketplaces.length} marketplace(s)).
+      ${dupCount ? `<br><strong style="color:var(--accent);">${dupCount} já existem</strong> (mesmo SKU + marketplace) -- escolha abaixo o que fazer.` : ''}
+    </p>
+    ${dupCount ? `
+    <div class="radio-row">
+      <label class="radio-opt"><input type="radio" name="dupstrategy" value="overwrite" checked> Sobrescrever os que já existem</label>
+      <label class="radio-opt"><input type="radio" name="dupstrategy" value="skip"> Pular os que já existem (manter o cadastro atual)</label>
+    </div>` : ''}
+    <div class="preview-scroll">
+      <table>
+        <thead><tr><th>SKU</th><th>Nome</th><th>Marketplace</th><th class="num">Preço</th><th class="num">Margem</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" id="imp_confirm">Confirmar importação</button>
+      <button class="btn" id="imp_back2">Voltar</button>
+      <button class="btn" id="imp_cancel3">Cancelar</button>
+    </div>
+  `;
+  document.getElementById('imp_cancel3').onclick = closeImportWizard;
+  document.getElementById('imp_back2').onclick = renderImportStep2;
+  document.getElementById('imp_confirm').onclick = ()=>{
+    const dupRadio = box.querySelector('input[name=dupstrategy]:checked');
+    const strategy = dupRadio ? dupRadio.value : 'overwrite';
+    let added = 0, overwritten = 0, skipped = 0;
+    candidates.forEach(c=>{
+      const idx = state.skus.findIndex(s => s.sku===c.sku && s.marketplaceId===c.marketplaceId);
+      if(idx !== -1){
+        if(strategy==='skip'){ skipped++; return; }
+        c.id = state.skus[idx].id;
+        state.skus[idx] = c;
+        overwritten++;
+      } else {
+        state.skus.push(c);
+        added++;
+      }
+    });
+    saveState();
+    closeImportWizard();
+    renderProdutos();
+    alert(`Importação concluída: ${added} produto(s) novo(s), ${overwritten} atualizado(s), ${skipped} pulado(s).`);
+  };
+}
+
+function renderProdutos(){
+  renderFilterOptions();
+  renderMetrics();
+  renderTable();
+  renderReceiptPanel();
+}
+
+// ---------- MARKETPLACES VIEW ----------
+const fieldDefs = [
+  {key:'commission', label:'Comissão sobre o preço -- %'},
+  {key:'service', label:'Taxa de serviço -- %'},
+  {key:'transaction', label:'Taxa de transação -- %'},
+  {key:'fixedFee', label:'Taxa fixa por item -- R$'}
+];
+function renderMarketplaces(){
+  const box = document.getElementById('mktCards');
+  box.innerHTML = state.profiles.map(p=>{
+    const confMap = {alta:['Confiança alta -- verificado','conf-alta'], media:['Confiança média -- fontes de terceiros','conf-media'], baixa:['Confiança baixa -- fontes de terceiros, não oficiais','conf-baixa']};
+    const [ctxt,ccls] = confMap[p.confidence] || confMap.baixa;
+    return `<div class="card" data-mktid="${p.id}">
+      <div class="field textrow"><label>Nome do marketplace</label><input type="text" data-mf="label" value="${p.label}" style="width:100%;text-align:left;"></div>
+      <select data-mf="confidence" style="margin:6px 0 10px;width:auto;text-align:left;">
+        <option value="alta" ${p.confidence==='alta'?'selected':''}>Confiança alta -- verificado</option>
+        <option value="media" ${p.confidence==='media'?'selected':''}>Confiança média -- fontes de terceiros</option>
+        <option value="baixa" ${p.confidence==='baixa'?'selected':''}>Confiança baixa -- não oficial</option>
+      </select>
+      <div class="field textrow"><label>Observação / fonte</label><textarea data-mf="note">${p.note}</textarea></div>
+      ${fieldDefs.map(f=>`<div class="field"><label>${f.label}</label><input type="number" step="0.01" data-mf="${f.key}" value="${p[f.key]}"></div>`).join('')}
+      <div class="field"><label>Constar valor antes do anúncio? (mostra também +40%, além do +20%)</label><input type="checkbox" data-mfcheck="dualAdPrice" ${p.dualAdPrice?'checked':''} style="width:auto;"></div>
+      <div class="field"><label>Tem frete variável por produto? (mostra o campo de frete no cadastro do produto)</label><input type="checkbox" data-mfcheck="variableFreight" ${p.variableFreight?'checked':''} style="width:auto;"></div>
+      <div class="form-actions">
+        <button class="btn danger small" data-delmkt="${p.id}" ${state.profiles.length<=1?'disabled':''}>Excluir marketplace</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('[data-mktid]').forEach(card=>{
+    const id = card.dataset.mktid;
+    card.querySelectorAll('[data-mf]').forEach(inp=>{
+      inp.addEventListener('input', ()=>{
+        const p = profileOf(id);
+        const key = inp.dataset.mf;
+        p[key] = (key==='label' || key==='note' || key==='confidence') ? inp.value : (parseFloat(inp.value)||0);
+        saveState();
+      });
+    });
+    card.querySelectorAll('[data-mfcheck]').forEach(chk=>{
+      chk.addEventListener('change', ()=>{
+        const p = profileOf(id);
+        p[chk.dataset.mfcheck] = chk.checked;
+        saveState();
+        renderProdutos();
+      });
+    });
+  });
+  box.querySelectorAll('[data-delmkt]').forEach(b=>{
+    b.onclick = ()=>{
+      if(state.profiles.length<=1) return;
+      if(!confirm('Excluir este marketplace? Produtos cadastrados nele ficarão sem marketplace válido.')) return;
+      state.profiles = state.profiles.filter(p=>p.id!==b.dataset.delmkt);
+      saveState();
+      renderMarketplaces();
+    };
+  });
+}
+document.getElementById('newMktBtn').onclick = ()=>{
+  const palette = ['#c9a24a','#5dcaa5','#7f77dd','#d4537e','#3f9ee0','#e09f27'];
+  const p = {id: uid(), label:'Novo marketplace', color: palette[state.profiles.length % palette.length],
+    confidence:'baixa', note:'Preencha com os valores reais deste canal de venda.',
+    commission:0, service:0, transaction:0, fixedFee:0, dualAdPrice:false, variableFreight:false};
+  state.profiles.push(p);
+  saveState();
+  renderMarketplaces();
+};
+
+// ---------- PADRÕES VIEW ----------
+function renderPadroes(){
+  document.getElementById('pFixedCost').value = state.padroes.fixedCost;
+  document.getElementById('pMisc').value = state.padroes.misc;
+  document.getElementById('pTax').value = state.padroes.taxPct;
+  document.getElementById('pMarketing').value = state.padroes.marketingPct;
+  document.getElementById('pCoupon').value = state.padroes.coupon;
+  document.getElementById('pFreight').value = state.padroes.freightNet;
+}
+['pFixedCost','pMisc','pTax','pMarketing','pCoupon','pFreight'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', ()=>{
+    state.padroes.fixedCost = parseFloat(document.getElementById('pFixedCost').value)||0;
+    state.padroes.misc = parseFloat(document.getElementById('pMisc').value)||0;
+    state.padroes.taxPct = parseFloat(document.getElementById('pTax').value)||0;
+    state.padroes.marketingPct = parseFloat(document.getElementById('pMarketing').value)||0;
+    state.padroes.coupon = parseFloat(document.getElementById('pCoupon').value)||0;
+    state.padroes.freightNet = parseFloat(document.getElementById('pFreight').value)||0;
+    saveState();
+  });
+});
+document.getElementById('exportBtn').onclick = ()=>{
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'precificacao-backup.json';
+  a.click();
+  URL.revokeObjectURL(url);
+};
+document.getElementById('importBtn').onclick = ()=> document.getElementById('importFile').click();
+document.getElementById('importFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const parsed = JSON.parse(reader.result);
+      if(!parsed.profiles || !parsed.skus) throw new Error('formato inválido');
+      state = parsed;
+      saveState();
+      renderProdutos(); renderMarketplaces(); renderPadroes();
+      alert('Dados importados com sucesso.');
+    }catch(err){
+      alert('Não foi possível importar este arquivo: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+document.getElementById('resetBtn').onclick = ()=>{
+  if(!confirm('Isso apaga todos os produtos e marketplaces cadastrados e restaura os padrões de fábrica. Continuar?')) return;
+  state = defaultState();
+  saveState();
+  renderProdutos(); renderMarketplaces(); renderPadroes();
+};
+
+// ---------- SINCRONIZAÇÃO (Google Sheets) ----------
+const GAS_CODE = `function doGet(e) {
+  return jsonResponse(readAll());
+}
+
+function doPost(e) {
+  try {
+    var body = JSON.parse(e.postData.contents);
+    if (body.action === 'saveAll') {
+      writeAll(body.state);
+      return jsonResponse({ok:true});
+    }
+    return jsonResponse({ok:false, error:'Ação desconhecida: ' + body.action});
+  } catch (err) {
+    return jsonResponse({ok:false, error: err.message});
+  }
+}
+
+function jsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getOrCreateSheet(name, headers) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+function readSheetAsObjects(name, headers) {
+  var sheet = getOrCreateSheet(name, headers);
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+  var head = values[0];
+  var rows = values.slice(1).filter(function (r) {
+    return r.some(function (c) { return c !== '' && c !== null; });
+  });
+  return rows.map(function (row) {
+    var obj = {};
+    head.forEach(function (h, i) { obj[h] = row[i]; });
+    return obj;
+  });
+}
+
+function writeObjectsToSheet(name, headers, objects) {
+  var sheet = getOrCreateSheet(name, headers);
+  sheet.clearContents();
+  sheet.appendRow(headers);
+  var rows = objects.map(function (obj) {
+    return headers.map(function (h) {
+      var v = obj[h];
+      return (v === undefined || v === null) ? '' : v;
+    });
+  });
+  if (rows.length) {
+    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  }
+}
+
+var MKT_HEADERS = ['id','label','color','confidence','note','commission','service','transaction','fixedFee','dualAdPrice','variableFreight'];
+var SKU_HEADERS = ['id','sku','name','marketplaceId','cogs','fixedCost','misc','taxPct','marketingPct','coupon','freightNet','mode','price','marginTarget','costOverride'];
+var PAD_HEADERS = ['fixedCost','misc','taxPct','marketingPct','coupon','freightNet'];
+
+function readAll() {
+  var padRows = readSheetAsObjects('Padroes', PAD_HEADERS);
+  return {
+    profiles: readSheetAsObjects('Marketplaces', MKT_HEADERS),
+    skus: readSheetAsObjects('Produtos', SKU_HEADERS),
+    padroes: padRows.length ? padRows[0] : {}
+  };
+}
+
+function writeAll(state) {
+  writeObjectsToSheet('Marketplaces', MKT_HEADERS, state.profiles || []);
+  writeObjectsToSheet('Produtos', SKU_HEADERS, state.skus || []);
+  writeObjectsToSheet('Padroes', PAD_HEADERS, [state.padroes || {}]);
+}`;
+document.getElementById('gasCode').textContent = GAS_CODE;
+document.getElementById('copyCodeBtn').onclick = ()=>{
+  navigator.clipboard.writeText(GAS_CODE).then(()=>{
+    const b = document.getElementById('copyCodeBtn');
+    const old = b.textContent; b.textContent = 'Copiado!';
+    setTimeout(()=> b.textContent = old, 1500);
+  }).catch(()=> alert('Não foi possível copiar automaticamente. Selecione o texto manualmente.'));
+};
+
+document.getElementById('connectBtn').onclick = ()=>{
+  const url = document.getElementById('gasUrlInput').value.trim();
+  if(!url){ alert('Cole a URL do Web App do Apps Script primeiro.'); return; }
+  gasUrl = url;
+  localStorage.setItem('mkt_pricing_gas_url', gasUrl);
+  renderSyncPill();
+  pullFromSheets(true);
+};
+document.getElementById('syncNowBtn').onclick = ()=>{
+  if(!gasUrl){ alert('Conecte uma URL primeiro.'); return; }
+  pullFromSheets(true);
+};
+document.getElementById('disconnectBtn').onclick = ()=>{
+  if(!confirm('Desconectar do Google Sheets? Os dados continuam salvos neste navegador, mas deixam de sincronizar.')) return;
+  gasUrl = '';
+  localStorage.removeItem('mkt_pricing_gas_url');
+  lastSyncOk = null; lastSyncTime = null; lastSyncError='';
+  renderSyncPill();
+  renderSyncView();
+};
+
+function renderStorageNote(){
+  document.getElementById('storageNote').textContent = gasUrl
+    ? 'Os dados sincronizam automaticamente com a sua planilha no Google Sheets (aba Sincronização). O navegador mantém uma cópia local como cache.'
+    : 'Os dados ficam salvos apenas no armazenamento local deste navegador, neste arquivo. Vá na aba "Sincronização (Google Sheets)" para ligar a um banco de dados que não some ao limpar o navegador ou trocar de computador.';
+}
+
+// ---------- init ----------
+renderTopDisclaimer();
+renderStorageNote();
+renderSyncPill();
+renderProdutos();
+if(gasUrl) pullFromSheets(false);
+</script>
+</body>
+</html>
