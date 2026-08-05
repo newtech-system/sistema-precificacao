@@ -282,7 +282,7 @@ function defaultState(){
     profiles,
     padroes:{fixedCost:0, misc:0, taxPct:0, marketingPct:0, coupon:0, freightNet:0},
     skus:[
-      {id:'demo1', sku:'DEMO-001', name:'Produto de exemplo (seu pedido real)', marketplaceId:'shopee',
+      {id:'demo1', sku:'DEMO-001-shopee', name:'Produto de exemplo (seu pedido real)', marketplaceId:'shopee',
        cogs:0, fixedCost:0, misc:0, taxPct:0, marketingPct:0, coupon:0.88, freightNet:0,
        mode:'price', price:43.89, marginTarget:20}
     ],
@@ -431,6 +431,7 @@ const brl = v => (isFinite(v)?v:0).toLocaleString('pt-BR',{style:'currency',curr
 const pct = v => (isFinite(v)?v:0).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
 const profileOf = id => state.profiles.find(p=>p.id===id) || state.profiles[0];
 const uid = () => 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const mktSlug = id => profileOf(id).label.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');
 
 function roundToBreakpoint(v){
   if(!isFinite(v) || v<=0) return 0;
@@ -681,7 +682,7 @@ function openSkuForm(id){
   form.style.display = 'block';
 
   const mktSelectorHtml = !editingSkuId
-    ? `<div class="field textrow"><label>Marketplaces (selecione um ou mais -- o produto será cadastrado em cada um, já considerando as taxas de cada plataforma)</label>
+    ? `<div class="field textrow"><label>Marketplaces (selecione um ou mais -- o produto será cadastrado em cada um, já considerando as taxas de cada plataforma. O SKU digitado abaixo ganha automaticamente o nome do marketplace no final, ex.: "07-01-46" vira "07-01-46-shopee")</label>
         <div class="mkt-checks">${state.profiles.map(p=>`<label class="mkt-check"><input type="checkbox" value="${p.id}" class="f-mkt-chk" ${p.id===sku.marketplaceId?'checked':''}><span class="mkt-dot" style="background:${p.color}"></span>${p.label}</label>`).join('')}</div>
       </div>`
     : `<div class="field"><label>Marketplace</label>
@@ -805,20 +806,22 @@ function openSkuForm(id){
     };
     if(editingSkuId){
       const idx = state.skus.findIndex(s=>s.id===editingSkuId);
-      state.skus[idx] = Object.assign({id:editingSkuId, marketplaceId: marketplaceIds[0]}, base);
+      state.skus[idx] = Object.assign({}, base, {id:editingSkuId, sku:skuCode, marketplaceId: marketplaceIds[0]});
       state.selectedSkuId = editingSkuId;
     } else {
-      const conflicts = marketplaceIds.filter(mid => state.skus.some(s => s.sku===skuCode && s.marketplaceId===mid));
+      const skuFor = mid => `${skuCode}-${mktSlug(mid)}`;
+      const conflicts = marketplaceIds.filter(mid => state.skus.some(s => s.sku===skuFor(mid) && s.marketplaceId===mid));
       if(conflicts.length){
         const names = conflicts.map(id=>profileOf(id).label).join(', ');
         if(!confirm(`Já existe um produto com o SKU "${skuCode}" em: ${names}. Sobrescrever esses e criar os demais?`)) return;
       }
       let firstId = null;
       marketplaceIds.forEach(mid=>{
-        const existingIdx = state.skus.findIndex(s => s.sku===skuCode && s.marketplaceId===mid);
+        const skuMid = skuFor(mid);
+        const existingIdx = state.skus.findIndex(s => s.sku===skuMid && s.marketplaceId===mid);
         const newId = existingIdx!==-1 ? state.skus[existingIdx].id : uid();
         if(!firstId) firstId = newId;
-        const data = Object.assign({id:newId, marketplaceId: mid}, base);
+        const data = Object.assign({}, base, {id:newId, sku:skuMid, marketplaceId: mid});
         if(existingIdx!==-1) state.skus[existingIdx] = data; else state.skus.push(data);
       });
       state.selectedSkuId = firstId;
@@ -942,7 +945,7 @@ function exportEditSpreadsheet(marketplaceIds){
   const rows = state.skus.filter(s => chosenSet.has(s.marketplaceId));
   if(rows.length === 0){ alert('Nenhum produto cadastrado nos marketplaces selecionados.'); return; }
   const numBR = v => round2(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-  const header = ['SKU','Nome','Marketplace (referência -- não é reimportado, escolha o marketplace na hora de reimportar)',
+  const header = ['SKU','Nome','Marketplace (referência -- escolha o mesmo marketplace na hora de reimportar)',
     'Custo do Produto (CMV)','Preço de Venda','Margem Desejada (%)','Cupom','Frete Líquido',
     'Custo Fixo (só se custo alterado)','Outros Custos (só se custo alterado)','Imposto % (só se custo alterado)','Marketing % (só se custo alterado)'];
   const data = [header];
@@ -1211,13 +1214,18 @@ function buildImportSku(row, marketplaceId){
     const v = row[idx];
     return v===undefined || v==='' ? undefined : v;
   };
-  const sku = String(g('sku')||'').trim();
+  const skuRaw = String(g('sku')||'').trim();
+  const suf = '-'+mktSlug(marketplaceId);
+  const sku = skuRaw.endsWith(suf) ? skuRaw : skuRaw+suf; // idempotente: não duplica o sufixo se ele já vier na planilha (ex.: reimportação da exportação de edição em massa)
   const num = (v, fallback) => { if(v===undefined) return fallback; const n = parseNumberBR(v); return isNaN(n) ? fallback : n; };
   const priceMapped = num(g('price'), null);
   const marginMapped = num(g('marginTarget'), null);
-  let mode = importState.mode, price = 0, marginTarget = 20;
-  if(mode==='price'){ price = priceMapped!==null ? priceMapped : importState.batchValue; }
-  else { marginTarget = marginMapped!==null ? marginMapped : importState.batchValue; }
+  // decide o modo por linha: usa o que essa linha específica tem preenchido, e só recorre à escolha do lote quando a linha não tem nenhum dos dois
+  let mode, price = 0, marginTarget = 20;
+  if(priceMapped!==null){ mode='price'; price = priceMapped; }
+  else if(marginMapped!==null){ mode='margin'; marginTarget = marginMapped; }
+  else if(importState.mode==='price'){ mode='price'; price = importState.batchValue; }
+  else { mode='margin'; marginTarget = importState.batchValue; }
   const rowCostVals = {fixedCost:g('fixedCost'), misc:g('misc'), taxPct:g('taxPct'), marketingPct:g('marketingPct')};
   const rowHasCostOverride = Object.values(rowCostVals).some(v => v !== undefined);
   return {
@@ -1486,19 +1494,23 @@ function readSheetAsObjects(name, headers) {
   });
 }
 
-function writeObjectsToSheet(name, headers, objects) {
+function writeObjectsToSheet(name, headers, objects, textFields) {
   var sheet = getOrCreateSheet(name, headers);
   sheet.clearContents();
   sheet.getRange(1, 1, 1, headers.length).setNumberFormat('@').setValues([headers]);
+  var textSet = textFields || [];
   var rows = objects.map(function (obj) {
     return headers.map(function (h) {
       var v = obj[h];
-      return (v === undefined || v === null) ? '' : v;
+      if (v === undefined || v === null) return '';
+      if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE'; // grava booleano como texto explícito, sem depender de como o Sheets internamente trataria um valor true/false
+      if (textSet.indexOf(h) !== -1 && v !== '') return "'" + String(v); // apóstrofo força texto puro (o mesmo truque de digitar '07-01-46 na planilha) -- é a forma mais confiável de impedir o Sheets de reinterpretar SKUs parecidos com data
+      return v;
     });
   });
   if (rows.length) {
     var range = sheet.getRange(2, 1, rows.length, headers.length);
-    range.setNumberFormat('@'); // força texto puro -- evita o Sheets "adivinhar" que um SKU parece data/número e converter a célula sozinho
+    range.setNumberFormat('@'); // reforço extra além do apóstrofo
     range.setValues(rows);
   }
 }
@@ -1517,9 +1529,9 @@ function readAll() {
 }
 
 function writeAll(state) {
-  writeObjectsToSheet('Marketplaces', MKT_HEADERS, state.profiles || []);
-  writeObjectsToSheet('Produtos', SKU_HEADERS, state.skus || []);
-  writeObjectsToSheet('Padroes', PAD_HEADERS, [state.padroes || {}]);
+  writeObjectsToSheet('Marketplaces', MKT_HEADERS, state.profiles || [], ['id','label']);
+  writeObjectsToSheet('Produtos', SKU_HEADERS, state.skus || [], ['id','sku','marketplaceId']);
+  writeObjectsToSheet('Padroes', PAD_HEADERS, [state.padroes || {}], []);
 }`;
 document.getElementById('gasCode').textContent = GAS_CODE;
 document.getElementById('copyCodeBtn').onclick = ()=>{
