@@ -1477,7 +1477,11 @@ function readSheetAsObjects(name, headers) {
   });
   return rows.map(function (row) {
     var obj = {};
-    head.forEach(function (h, i) { obj[h] = row[i]; });
+    head.forEach(function (h, i) {
+      var v = row[i];
+      // se uma célula já foi corrompida em uma data pelo Sheets antes desta correção, não deixa o lixo se espalhar
+      obj[h] = (v instanceof Date) ? '' : v;
+    });
     return obj;
   });
 }
@@ -1485,7 +1489,7 @@ function readSheetAsObjects(name, headers) {
 function writeObjectsToSheet(name, headers, objects) {
   var sheet = getOrCreateSheet(name, headers);
   sheet.clearContents();
-  sheet.appendRow(headers);
+  sheet.getRange(1, 1, 1, headers.length).setNumberFormat('@').setValues([headers]);
   var rows = objects.map(function (obj) {
     return headers.map(function (h) {
       var v = obj[h];
@@ -1493,7 +1497,9 @@ function writeObjectsToSheet(name, headers, objects) {
     });
   });
   if (rows.length) {
-    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+    var range = sheet.getRange(2, 1, rows.length, headers.length);
+    range.setNumberFormat('@'); // força texto puro -- evita o Sheets "adivinhar" que um SKU parece data/número e converter a célula sozinho
+    range.setValues(rows);
   }
 }
 
