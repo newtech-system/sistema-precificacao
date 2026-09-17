@@ -5,8 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema de precificação por SKU</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- O leitor de .xlsx tem 882 KB, quase 7x o sistema inteiro, e só serve na importação de
+     planilha Excel. Em vez de carregar em toda abertura, ele é baixado sob demanda em
+     carregarXLSX(), quando o usuário escolhe de fato um arquivo .xlsx/.xls. -->
 <style>
   :root{
     /* superfícies */
@@ -325,14 +328,28 @@
   .menu-item span{color:var(--ink-mute);font-size:10.5px;}
 
   /* ---------- faixas de preço ---------- */
-  /* marketplace com faixas ocupa a linha inteira -- o editor não cabe num card estreito */
+  /* marketplace com faixas ocupa a linha inteira -- a tabela de faixas precisa de largura */
   .card.wide{grid-column:1/-1;}
-  .tier{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:10px;background:var(--panel-2);}
-  .tier .grid2{grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:0 20px;}
-  .tier-head{display:flex;align-items:center;gap:9px;margin-bottom:4px;flex-wrap:wrap;}
-  .tier-badge{font-family:var(--f-title);font-size:10px;text-transform:uppercase;letter-spacing:.07em;
-    background:var(--accent-dim);color:var(--accent);padding:3px 9px;border-radius:var(--r-pill);}
-  .tier-range{font-size:11px;color:var(--ink-mute);}
+  /* Editor de faixas: uma linha por faixa, campos pequenos lado a lado. A versão anterior
+     usava um bloco de seis campos de largura total por faixa e tomava a tela inteira. */
+  .tier-table{font-size:12px;}
+  .tier-table thead th{background:transparent;padding:0 6px 7px;font-size:9.5px;white-space:nowrap;}
+  .tier-table tbody td{padding:4px 6px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
+  .tier-table tbody tr{cursor:default;}
+  .tier-table tbody tr:hover{background:transparent;}
+  .tier-table tbody tr:last-child td{border-bottom:none;}
+  .tier-table input[type=number]{
+    width:72px;text-align:right;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:var(--r-sm);color:var(--ink);font-family:var(--f-body);font-size:12.5px;padding:6px 8px;
+    transition:border-color var(--t),box-shadow var(--t);
+  }
+  .tier-table input[type=number]:hover{border-color:var(--line-strong);}
+  .tier-table .tcol-faixa{white-space:nowrap;}
+  .tier-table .tier-fixed{display:inline-block;padding:6px 2px;color:var(--ink-mute);font-size:12.5px;}
+  .tier-table .tier-note{display:block;font-size:9.5px;color:var(--ink-mute);letter-spacing:.02em;margin-top:1px;}
+  .tier-table .tcol-resumo{color:var(--accent-2);white-space:nowrap;font-variant-numeric:tabular-nums;padding-left:12px;font-size:11.5px;}
+  .tier-table .tcol-x{text-align:right;}
+  .tier-table .tcol-x .btn{padding:3px 9px;font-size:14px;line-height:1;}
   .tier-sim table{margin-top:2px;}
   .tier-sim thead th{background:transparent;padding:6px 8px;}
   .tier-sim tbody td{padding:6px 8px;}
@@ -516,6 +533,15 @@ function esc(v){
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+// Espera o usuário parar de digitar antes de refazer um trabalho caro.
+function debounce(fn, ms){
+  let t;
+  return function(){ const args = arguments; clearTimeout(t); t = setTimeout(()=> fn.apply(null, args), ms); };
+}
+
+// redesenho do catálogo agrupado: várias mudanças seguidas viram um desenho só
+const recalcularCatalogo = debounce(()=> renderProdutos(), 150);
 
 let toastSeq = 0;
 function toast(msg, kind, title){
@@ -975,11 +1001,22 @@ document.querySelectorAll('nav.maintabs button').forEach(b=>{
 });
 
 // ---------- PRODUTOS VIEW ----------
+// Um ciclo de desenho chama calcSku para a lista inteira duas vezes: uma nas métricas, outra
+// na tabela. Com faixas de preço o cálculo ficou mais caro (resolve em cada faixa), então o
+// resultado é reaproveitado dentro do mesmo ciclo. O cache vive só durante renderProdutos().
+let calcCache = null;
+function calcDoSku(sku){
+  if(!calcCache) return calcSku(profileOf(sku.marketplaceId), sku);
+  let r = calcCache.get(sku.id);
+  if(r === undefined){ r = calcSku(profileOf(sku.marketplaceId), sku); calcCache.set(sku.id, r); }
+  return r;
+}
+
 function filteredSortedSkus(){
   const q = (document.getElementById('search').value||'').toLowerCase();
   const mktFilter = document.getElementById('filterMkt').value;
   const sortBy = document.getElementById('sortBy').value;
-  let rows = state.skus.map(sku=>({sku, r: calcSku(profileOf(sku.marketplaceId), sku)}));
+  let rows = state.skus.map(sku=>({sku, r: calcDoSku(sku)}));
   if(q) rows = rows.filter(x => x.sku.sku.toLowerCase().includes(q) || x.sku.name.toLowerCase().includes(q));
   if(mktFilter === '__missing__') rows = rows.filter(x => profileOf(x.sku.marketplaceId).missing);
   else if(mktFilter) rows = rows.filter(x => x.sku.marketplaceId === mktFilter);
@@ -995,7 +1032,7 @@ function filteredSortedSkus(){
 }
 
 function renderMetrics(){
-  const rows = state.skus.map(sku=>calcSku(profileOf(sku.marketplaceId), sku));
+  const rows = state.skus.map(calcDoSku);
   const valid = rows.filter(r=>!r.error);
   const avgMargin = valid.length ? valid.reduce((a,r)=>a+r.marginPct,0)/valid.length : 0;
   const losing = rows.filter(r=>r.error || r.marginPct<0).length;
@@ -1092,7 +1129,7 @@ function renderReceiptPanel(){
     return;
   }
   const profile = profileOf(sku.marketplaceId);
-  const r = calcSku(profile, sku);
+  const r = calcDoSku(sku);
   const line = (lbl, val, cls='') => `<div class="rline ${cls}"><span class="lbl">${lbl}</span><span class="val">${val<0?'-':''}${brl(Math.abs(val))}</span></div>`;
   const cab = `<h2>Recibo de precificação</h2><p class="mkt-name">${esc(sku.sku)} &middot; ${esc(sku.name)} &middot; ${esc(profile.label)}</p>`;
   const avisos = (profile.missing ? `<p class="warnline">O marketplace deste produto foi excluído. Os valores abaixo estão calculados sem nenhuma taxa &mdash; edite o produto e escolha um marketplace válido.</p>` : '')
@@ -1425,7 +1462,8 @@ function deleteSku(id){
 }
 
 document.getElementById('newSkuBtn').onclick = ()=> { closeImportWizard(); closeExportWizard(); openSkuForm(null); };
-document.getElementById('search').addEventListener('input', renderTable);
+// a busca redesenha a tabela inteira; sem a espera, cada tecla recalcula o catálogo todo
+document.getElementById('search').addEventListener('input', debounce(renderTable, 120));
 document.getElementById('filterMkt').addEventListener('change', renderTable);
 document.getElementById('sheetActions').addEventListener('change', (e)=>{
   const acao = e.target.value;
@@ -1677,19 +1715,40 @@ document.getElementById('importFileInput').addEventListener('change', (e)=>{
   } else {
     const reader = new FileReader();
     reader.onload = (ev)=>{
-      try{
-        const data = new Uint8Array(ev.target.result);
-        const wb = XLSX.read(data, {type:'array'});
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows2d = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
-        handleParsedRows(rows2d);
-      }catch(err){
-        toast(err.message + '. Confira se é um .xlsx/.xls válido.', 'err', 'Não foi possível ler o arquivo');
-      }
+      const data = new Uint8Array(ev.target.result);
+      toast('Baixando o leitor de Excel (só nesta primeira vez)...', 'warn');
+      carregarXLSX().then(XLSX=>{
+        try{
+          const wb = XLSX.read(data, {type:'array'});
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          handleParsedRows(XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''}));
+        }catch(err){
+          toast(err.message + '. Confira se é um .xlsx/.xls válido.', 'err', 'Não foi possível ler o arquivo');
+        }
+      }).catch(err=> toast(err.message, 'err', 'Leitor de Excel indisponível'));
     };
     reader.readAsArrayBuffer(file);
   }
 });
+
+// Baixa o leitor de .xlsx só quando ele é realmente necessário, e uma vez só por sessão.
+let xlsxPromise = null;
+function carregarXLSX(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  if(!xlsxPromise){
+    xlsxPromise = new Promise((resolve, reject)=>{
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = ()=> window.XLSX ? resolve(window.XLSX) : reject(new Error('O leitor carregou incompleto. Recarregue a página e tente de novo.'));
+      s.onerror = ()=>{
+        xlsxPromise = null;   // deixa tentar de novo numa próxima importação
+        reject(new Error('Sem conexão com o CDN. Salve a planilha como .csv (separado por ponto e vírgula) e importe de novo -- CSV não precisa de download nenhum.'));
+      };
+      document.head.appendChild(s);
+    });
+  }
+  return xlsxPromise;
+}
 
 function handleParsedRows(rows2d){
   rows2d = rows2d.filter(r => r.some(c => String(c).trim() !== ''));
@@ -1987,10 +2046,15 @@ function renderImportStep3(){
 }
 
 function renderProdutos(){
-  renderFilterOptions();
-  renderMetrics();
-  renderTable();
-  renderReceiptPanel();
+  calcCache = new Map();          // vale só para este ciclo: métricas e tabela usam a mesma conta
+  try{
+    renderFilterOptions();
+    renderMetrics();
+    renderTable();
+    renderReceiptPanel();
+  } finally {
+    calcCache = null;             // nunca sobrevive ao ciclo, senão mostraria número velho
+  }
 }
 
 // ---------- MARKETPLACES VIEW ----------
@@ -2014,31 +2078,38 @@ const mktToggles = [
 // início da faixa seguinte; a primeira sempre começa em zero, por isso o campo dela fica travado.
 function tierEditorHtml(p){
   const tiers = (p.tiers && p.tiers.length) ? p.tiers : [{min:0, commission:0, service:0, transaction:0, fixedFee:0, serviceCap:0}];
+  const cel = (i, campo, val, extra='') =>
+    `<td><input type="number" step="0.01" data-tier="${i}" data-tf="${campo}" value="${esc(val)}" ${extra}></td>`;
   const linhas = tiers.map((t,i)=>{
     const max = tiers[i+1] ? Number(tiers[i+1].min)||0 : Infinity;
-    const faixa = tierRangeLabel(i===0 ? 0 : (Number(t.min)||0), max) || 'todos os preços';
     const total = (Number(t.commission)||0)+(Number(t.service)||0)+(Number(t.transaction)||0);
-    return `<div class="tier" data-tier="${i}">
-      <div class="tier-head">
-        <span class="tier-badge">Faixa ${i+1}</span>
-        <span class="tier-range">${faixa} &nbsp;&middot;&nbsp; ${total.toLocaleString('pt-BR',{maximumFractionDigits:2})}% + ${brl(Number(t.fixedFee)||0)}</span>
-        <span style="flex:1;"></span>
-        <button class="btn small danger" data-deltier="${i}" ${tiers.length<=1?'disabled':''}>Remover</button>
-      </div>
-      <div class="grid2">
-        <div class="field"><label>Preço a partir de -- R$</label><input type="number" step="0.01" data-tf="min" value="${esc(i===0?0:t.min)}" ${i===0?'disabled title="A primeira faixa sempre começa em zero"':''}></div>
-        <div class="field"><label>Comissão -- %</label><input type="number" step="0.01" data-tf="commission" value="${esc(t.commission)}"></div>
-        <div class="field"><label>Taxa de serviço / envio -- %</label><input type="number" step="0.01" data-tf="service" value="${esc(t.service)}"></div>
-        <div class="field"><label>Teto da taxa de serviço -- R$<span class="hint">0 = sem teto. Ex.: Programa de Envio 6% limitado a R$ 50,00 por item.</span></label><input type="number" step="0.01" data-tf="serviceCap" value="${esc(t.serviceCap)}"></div>
-        <div class="field"><label>Taxa de transação -- %</label><input type="number" step="0.01" data-tf="transaction" value="${esc(t.transaction)}"></div>
-        <div class="field"><label>Taxa fixa por item -- R$</label><input type="number" step="0.01" data-tf="fixedFee" value="${esc(t.fixedFee)}"></div>
-      </div>
-    </div>`;
+    return `<tr>
+      <td class="tcol-faixa">${i===0
+        ? `<span class="tier-fixed">R$ 0,00</span><span class="tier-note">base</span>`
+        : `<input type="number" step="0.01" data-tier="${i}" data-tf="min" data-reorder value="${esc(t.min)}">`}</td>
+      ${cel(i,'commission',t.commission)}
+      ${cel(i,'service',t.service)}
+      ${cel(i,'serviceCap',t.serviceCap)}
+      ${cel(i,'transaction',t.transaction)}
+      ${cel(i,'fixedFee',t.fixedFee)}
+      <td class="tcol-resumo">${total.toLocaleString('pt-BR',{maximumFractionDigits:2})}% + ${brl(Number(t.fixedFee)||0)}
+        <span class="tier-note">${tierRangeLabel(i===0 ? 0 : (Number(t.min)||0), max) || 'todos os preços'}</span></td>
+      <td class="tcol-x"><button class="btn small danger" data-deltier="${i}" ${tiers.length<=1?'disabled':''} title="Remover faixa">&times;</button></td>
+    </tr>`;
   }).join('');
   return `<div class="section-label">Faixas de preço</div>
-    <p class="sub" style="margin:8px 0 10px;">Cada faixa vale do preço indicado até o início da faixa seguinte. O sistema escolhe a faixa sozinho pelo preço calculado -- inclusive quando você informa a margem desejada e ele precisa descobrir o preço.</p>
-    ${linhas}
-    <div class="form-actions" style="margin-top:4px;"><button class="btn small" data-addtier="${esc(p.id)}">+ Adicionar faixa</button></div>
+    <p class="sub" style="margin:8px 0 10px;">Uma linha por faixa. Cada uma vale do preço indicado até o início da faixa seguinte, e o sistema escolhe sozinho qual usar -- inclusive quando você informa a margem e ele precisa descobrir o preço.</p>
+    <div class="tablewrap">
+      <table class="tier-table">
+        <thead><tr>
+          <th>A partir de</th><th>Comissão %</th><th>Serviço %</th>
+          <th title="Valor máximo em R$ que a taxa de serviço pode cobrar por item. 0 = sem teto.">Teto R$</th>
+          <th>Transaç. %</th><th>Fixa R$</th><th>Resulta em</th><th></th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+    <div class="form-actions" style="margin-top:10px;"><button class="btn small" data-addtier="${esc(p.id)}">+ Adicionar faixa</button></div>
     <div class="tier-sim" data-tiersim></div>`;
 }
 
@@ -2064,6 +2135,19 @@ function tierSimHtml(p){
   return `<div class="section-label" style="margin-top:14px;">Conferência rápida</div>
     <p class="sub" style="margin:8px 0 8px;">Quanto sobra na sua mão em cada preço, sem contar custos da empresa, cupom ou frete.</p>
     <table><thead><tr><th class="num">Preço</th><th class="num">Taxas</th><th class="num">Você recebe</th><th>Faixa</th></tr></thead><tbody>${linhas}</tbody></table>`;
+}
+
+// Atualiza só a coluna "Resulta em" da linha editada, sem redesenhar a tabela inteira --
+// redesenhar tiraria o foco do campo no meio da digitação.
+function atualizaResumoDaLinha(inp, p, i){
+  const linha = inp.closest('tr');
+  const alvo = linha && linha.querySelector('.tcol-resumo');
+  if(!alvo) return;
+  const t = p.tiers[i];
+  const total = (Number(t.commission)||0)+(Number(t.service)||0)+(Number(t.transaction)||0);
+  const max = p.tiers[i+1] ? Number(p.tiers[i+1].min)||0 : Infinity;
+  alvo.innerHTML = `${total.toLocaleString('pt-BR',{maximumFractionDigits:2})}% + ${brl(Number(t.fixedFee)||0)}
+    <span class="tier-note">${tierRangeLabel(i===0 ? 0 : (Number(t.min)||0), max) || 'todos os preços'}</span>`;
 }
 
 function renderMarketplaces(){
@@ -2123,20 +2207,21 @@ function renderMarketplaces(){
     const simBox = card.querySelector('[data-tiersim]');
     const atualizaSim = ()=>{ if(simBox) simBox.innerHTML = tierSimHtml(profileOf(id)); };
     atualizaSim();
-    card.querySelectorAll('.tier').forEach(bloco=>{
-      const i = parseInt(bloco.dataset.tier);
-      bloco.querySelectorAll('[data-tf]').forEach(inp=>{
-        inp.addEventListener('input', ()=>{
-          const p = profileOf(id);
-          if(!p.tiers[i]) return;
-          p.tiers[i][inp.dataset.tf] = parseFloat(inp.value)||0;
-          saveState();
-          atualizaSim();
-          renderProdutos();
-        });
-        // reordena e redesenha só ao sair do campo: reordenar a cada tecla faria o campo
-        // perder o foco no meio da digitação
-        if(inp.dataset.tf === 'min') inp.addEventListener('blur', ()=>{ normalizeProfile(profileOf(id)); saveState(); renderMarketplaces(); });
+    card.querySelectorAll('[data-tf]').forEach(inp=>{
+      const i = parseInt(inp.dataset.tier);
+      inp.addEventListener('input', ()=>{
+        const p = profileOf(id);
+        if(!p.tiers[i]) return;
+        p.tiers[i][inp.dataset.tf] = parseFloat(inp.value)||0;
+        saveState();
+        atualizaResumoDaLinha(inp, p, i);
+        atualizaSim();
+        recalcularCatalogo();
+      });
+      // reordenar a cada tecla faria o campo perder o foco no meio da digitação,
+      // então a lista só é reordenada e redesenhada quando o campo perde o foco
+      if(inp.hasAttribute('data-reorder')) inp.addEventListener('blur', ()=>{
+        normalizeProfile(profileOf(id)); saveState(); renderMarketplaces(); renderProdutos();
       });
     });
     card.querySelectorAll('[data-deltier]').forEach(b=>{
@@ -2260,8 +2345,9 @@ function renderPadroesImpact(){
     state.padroes.coupon = parseFloat(document.getElementById('pCoupon').value)||0;
     state.padroes.freightNet = parseFloat(document.getElementById('pFreight').value)||0;
     saveState();
-    // os custos da empresa são vinculados ao vivo: recalcula as métricas e a tabela na hora
-    renderProdutos();
+    // os custos da empresa são vinculados ao vivo, mas redesenhar o catálogo a cada tecla
+    // é trabalho jogado fora: espera a digitação parar
+    recalcularCatalogo();
     renderPadroesImpact();
   });
 });
