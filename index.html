@@ -96,6 +96,8 @@
   .topbar .sub{font-size:11.5px;color:var(--ink-mute);margin:1px 0 0;}
   .topbar .grow{flex:1;}
   .page{padding:22px 26px 90px;max-width:1420px;width:100%;}
+  .view{display:none;}
+  .view.active{display:block;}
   @media (max-width:900px){
     :root{--sidebar:0px;}
     .sidebar{position:static;width:auto;flex-direction:row;overflow-x:auto;overflow-y:hidden;
@@ -383,6 +385,7 @@
 
   /* ============ menu suspenso ============ */
   .menu-wrap{position:relative;display:inline-block;}
+  .menu[hidden]{display:none;}
   .menu{position:absolute;right:0;top:calc(100% + 6px);z-index:70;min-width:270px;
     background:var(--surface-2);border:1px solid var(--line-strong);border-radius:var(--r);
     box-shadow:var(--sh-3);padding:5px;display:flex;flex-direction:column;gap:2px;}
@@ -1115,10 +1118,14 @@ function topbarHtml(view){
 // aqui -- e não uma vez só no carregamento, como era quando tudo vivia na página.
 function ligarControlesDaTopbar(view){
   if(view === 'produtos'){
+    // a barra de título acabou de ser remontada: devolve a ela o que já estava filtrado
+    document.getElementById('search').value = filtros.q;
+    document.getElementById('sortBy').value = filtros.ordem;
     renderFilterOptions();
-    document.getElementById('search').addEventListener('input', debounce(renderTable, 120));
-    document.getElementById('filterMkt').addEventListener('change', renderTable);
-    document.getElementById('sortBy').addEventListener('change', renderTable);
+    const busca = document.getElementById('search');
+    busca.addEventListener('input', debounce(()=>{ filtros.q = busca.value || ''; renderTable(); }, 120));
+    document.getElementById('filterMkt').addEventListener('change', (e)=>{ filtros.mkt = e.target.value; renderTable(); });
+    document.getElementById('sortBy').addEventListener('change', (e)=>{ filtros.ordem = e.target.value; renderTable(); });
         document.getElementById('sheetActions').addEventListener('change', (e)=>{
       const acao = e.target.value;
       e.target.value = '';   // o select é um menu de ações, não um estado
@@ -1179,10 +1186,16 @@ function calcDoSku(sku){
   return r;
 }
 
+// Busca, filtro e ordenação vivem aqui, não nos campos da tela. A barra de título é
+// remontada a cada troca de seção, então ler direto do DOM quebrava o desenho do catálogo
+// sempre que ele era disparado de fora da tela de Produtos -- e isso matava, em silêncio,
+// os botões das telas de Marketplaces, Custos e Sincronização.
+const filtros = {q:'', mkt:'', ordem:'margin_asc'};
+
 function filteredSortedSkus(){
-  const q = (document.getElementById('search').value||'').toLowerCase();
-  const mktFilter = document.getElementById('filterMkt').value;
-  const sortBy = document.getElementById('sortBy').value;
+  const q = filtros.q.toLowerCase();
+  const mktFilter = filtros.mkt;
+  const sortBy = filtros.ordem;
   let rows = state.skus.map(sku=>({sku, r: calcDoSku(sku)}));
   if(q) rows = rows.filter(x => x.sku.sku.toLowerCase().includes(q) || x.sku.name.toLowerCase().includes(q));
   if(mktFilter === '__missing__') rows = rows.filter(x => profileOf(x.sku.marketplaceId).missing);
@@ -1220,13 +1233,18 @@ function renderMetrics(){
 
 function renderFilterOptions(){
   const sel = document.getElementById('filterMkt');
-  const current = sel.value;
   const orfaos = state.skus.some(s=>profileOf(s.marketplaceId).missing);
+  const validos = [''].concat(state.profiles.map(p=>p.id), orfaos ? ['__missing__'] : []);
+  // se o marketplace filtrado foi excluído, volta para todos em vez de deixar a tabela
+  // vazia sem explicação
+  if(validos.indexOf(filtros.mkt) === -1) filtros.mkt = '';
+  if(!sel) return;   // a barra de título da seção de Produtos não está montada agora
+  const current = filtros.mkt;
   sel.innerHTML = '<option value="">Todos os marketplaces</option>' +
     state.profiles.map(p=>`<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('') +
     (orfaos ? '<option value="__missing__">Sem marketplace válido</option>' : '');
   // se o marketplace filtrado foi excluído, o select ficaria em branco e a tabela vazia sem explicação
-  sel.value = Array.from(sel.options).some(o=>o.value===current) ? current : '';
+  sel.value = current;
 }
 
 function renderTable(){
@@ -1635,7 +1653,7 @@ function deleteSku(id){
 document.addEventListener('keydown', (e)=>{
   if(e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)){
     const s = document.getElementById('search');
-    if(document.getElementById('view-produtos').classList.contains('active')){ e.preventDefault(); s.focus(); s.select(); }
+    if(s && viewAtual === 'produtos'){ e.preventDefault(); s.focus(); s.select(); }
   }
 });
 
