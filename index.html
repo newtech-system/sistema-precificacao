@@ -313,6 +313,32 @@
   .preview-note{font-size:12px;color:var(--ink-mute);margin-bottom:11px;line-height:1.7;}
   .preview-scroll{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:var(--r);}
 
+  /* ---------- menu suspenso ---------- */
+  .menu-wrap{position:relative;display:inline-block;}
+  .menu{position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:260px;
+    background:var(--panel-2);border:1px solid var(--line-strong);border-radius:var(--r);
+    box-shadow:var(--sh-3);padding:5px;display:flex;flex-direction:column;gap:2px;}
+  .menu-item{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;
+    background:none;border:none;color:var(--ink);font-family:var(--f-body);font-size:12px;
+    padding:9px 11px;border-radius:var(--r-sm);cursor:pointer;transition:background var(--t);}
+  .menu-item:hover{background:var(--panel-3);}
+  .menu-item span{color:var(--ink-mute);font-size:10.5px;}
+
+  /* ---------- faixas de preço ---------- */
+  /* marketplace com faixas ocupa a linha inteira -- o editor não cabe num card estreito */
+  .card.wide{grid-column:1/-1;}
+  .tier{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:10px;background:var(--panel-2);}
+  .tier .grid2{grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:0 20px;}
+  .tier-head{display:flex;align-items:center;gap:9px;margin-bottom:4px;flex-wrap:wrap;}
+  .tier-badge{font-family:var(--f-title);font-size:10px;text-transform:uppercase;letter-spacing:.07em;
+    background:var(--accent-dim);color:var(--accent);padding:3px 9px;border-radius:var(--r-pill);}
+  .tier-range{font-size:11px;color:var(--ink-mute);}
+  .tier-sim table{margin-top:2px;}
+  .tier-sim thead th{background:transparent;padding:6px 8px;}
+  .tier-sim tbody td{padding:6px 8px;}
+  .tier-sim tbody tr{cursor:default;}
+  .tier-sim tbody tr:hover{background:transparent;}
+
   /* ---------- toasts ---------- */
   #toasts{position:fixed;right:18px;bottom:18px;z-index:120;display:flex;flex-direction:column;gap:9px;
     max-width:min(380px,calc(100vw - 36px));pointer-events:none;}
@@ -400,7 +426,10 @@
   <section id="view-marketplaces" class="view">
     <div class="toolbar">
       <div class="spacer"></div>
-      <button class="btn primary" id="newMktBtn">+ Adicionar marketplace</button>
+      <div class="menu-wrap">
+        <button class="btn primary" id="newMktBtn">+ Adicionar marketplace</button>
+        <div class="menu" id="newMktMenu" hidden></div>
+      </div>
     </div>
     <div class="mkt-cards" id="mktCards"></div>
   </section>
@@ -469,7 +498,7 @@
 
     <div class="card">
       <h2>Código para colar no Apps Script</h2>
-      <div class="disclaimer" style="margin:0 0 12px;">Este código mudou na versão atual do sistema (ganhou as colunas <code>variableFixedFee</code> e <code>mktFixedFee</code>). Se a sua planilha já estava conectada, cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. Sem isso, a taxa fixa por anúncio funciona no navegador mas some ao sincronizar.</div>
+      <div class="disclaimer" style="margin:0 0 12px;">Este código mudou na versão atual do sistema (ganhou as colunas <code>variableFixedFee</code>, <code>mktFixedFee</code>, <code>tiered</code> e <code>tiers</code>). Se a sua planilha já estava conectada, cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. Sem isso, a taxa fixa por anúncio e as faixas de preço funcionam no navegador mas somem ao sincronizar.</div>
       <div class="form-actions" style="margin:0 0 10px;"><button class="btn small" id="copyCodeBtn">Copiar código</button></div>
       <pre class="codeblock" id="gasCode"></pre>
     </div>
@@ -519,11 +548,33 @@ function defaultProfiles(){
     {id:'shein', label:'Shein', color:'#ff5a9e', confidence:'media',
       note:'Diversas fontes de terceiros convergem em 16% sobre o valor do produto após cupons, sem taxa fixa por item. Pode haver isenção temporária para novos vendedores. Confirme na página oficial "Política de Comissão" da Shein.',
       commission:16, service:0, transaction:0, fixedFee:0},
+    Object.assign({id:'tiktokshop'}, JSON.parse(JSON.stringify(PRESET_TIKTOK))),  // cópia: as faixas não podem compartilhar a mesma lista do modelo
     {id:'custom', label:'Personalizado', color:'#8c8c88', confidence:'baixa',
       note:'Preencha com os valores reais do canal de venda que você quer simular.',
       commission:0, service:0, transaction:0, fixedFee:0}
-  ].map(p => Object.assign({dualAdPrice:false, variableFreight:false, variableFixedFee:false}, p));
+  ].map(p => Object.assign({dualAdPrice:false, variableFreight:false, variableFixedFee:false, tiered:false, tiers:[]}, p));
 }
+
+// Modelos prontos de marketplace, usados no botão "+ Adicionar marketplace".
+// TikTok Shop cobra por faixa de preço: abaixo de R$50 a comissão é maior e a taxa fixa menor;
+// a partir de R$50 inverte. O Programa de Envio (6%) tem teto de R$50 por item, o que na prática
+// cria uma terceira faixa a partir de R$833,33, quando o percentual bate no teto.
+const PRESET_TIKTOK = {
+  label:'TikTok Shop', color:'#25f4ee', confidence:'media',
+  note:'Regras informadas pelo dono do sistema em set/2026, com os dois exemplos conferidos (R$40 -> recebe R$29,60; R$100 -> recebe R$82,00). Não foram verificadas contra a página oficial do TikTok Shop -- confirme no Seller Center, principalmente o teto de R$50 do Programa de Envio e se a sua categoria tem percentual diferente.',
+  commission:10, service:6, transaction:0, fixedFee:4,
+  tiered:true,
+  tiers:[
+    {min:0,  commission:10, service:6, transaction:0, fixedFee:4, serviceCap:50},
+    {min:50, commission:6,  service:6, transaction:0, fixedFee:6, serviceCap:50}
+  ]
+};
+const PRESETS = [
+  {key:'tiktokshop', label:'TikTok Shop', hint:'com as faixas de preço já configuradas', data: PRESET_TIKTOK},
+  {key:'branco', label:'Em branco', hint:'preencher do zero', data:{
+    label:'Novo marketplace', confidence:'baixa', note:'Preencha com os valores reais deste canal de venda.',
+    commission:0, service:0, transaction:0, fixedFee:0, tiered:false, tiers:[]}}
+];
 
 function defaultState(){
   const profiles = defaultProfiles();
@@ -672,6 +723,22 @@ function normalizeProfile(p){
   p.dualAdPrice = toBool(p.dualAdPrice);
   p.variableFreight = toBool(p.variableFreight);
   p.variableFixedFee = toBool(p.variableFixedFee);
+  p.tiered = toBool(p.tiered);
+  // As faixas de preço são uma lista de objetos. Uma célula do Google Sheets só guarda texto,
+  // então elas viajam como JSON e voltam como string -- precisa desserializar aqui.
+  if(typeof p.tiers === 'string'){
+    try{ p.tiers = JSON.parse(p.tiers || '[]'); }catch(e){ p.tiers = []; }
+  }
+  if(!Array.isArray(p.tiers)) p.tiers = [];
+  p.tiers = p.tiers.map(t=>({
+    min: Number(t.min)||0,
+    commission: Number(t.commission)||0,
+    service: Number(t.service)||0,
+    transaction: Number(t.transaction)||0,
+    fixedFee: Number(t.fixedFee)||0,
+    serviceCap: Number(t.serviceCap)||0
+  })).sort((a,b)=> a.min - b.min);
+  if(p.tiered && p.tiers.length === 0) p.tiered = false;   // marcado como faixado mas sem faixa nenhuma
 }
 function normalizePadroes(p){
   const out = {};
@@ -764,34 +831,116 @@ function effectiveCompanyCosts(sku){
 // Marketplaces marcados como "taxa fixa variável por anúncio" cobram um valor fixo diferente
 // para cada anúncio (faixa de preço, categoria, tipo de anúncio). Nesses, o valor vale por
 // produto (sku.mktFixedFee); nos demais, vale o valor único do marketplace (profile.fixedFee).
+// Em marketplaces com faixas de preço quem manda é a faixa, não este campo.
 function effectiveFixedFee(profile, sku){
   return profile.variableFixedFee ? (Number(sku.mktFixedFee)||0) : (Number(profile.fixedFee)||0);
 }
 
+function tierRangeLabel(min, max){
+  if(min<=0 && !isFinite(max)) return '';
+  if(min<=0) return 'abaixo de ' + brl(max);
+  if(!isFinite(max)) return 'a partir de ' + brl(min);
+  return 'de ' + brl(min) + ' a ' + brl(max);
+}
+
+// Um "trecho" é um intervalo de preço em que o percentual e o valor fixo do marketplace são
+// constantes. Marketplace sem faixas = um trecho só, de zero ao infinito, e a conta fica
+// idêntica à de sempre. Marketplace com faixas (TikTok Shop, por exemplo) vira vários.
+//
+// O teto em R$ de uma taxa percentual (ex.: Programa de Envio 6% limitado a R$50 por item)
+// também gera um trecho: a partir do preço em que o percentual bate no teto, aquela taxa
+// para de crescer e passa a se comportar como um valor fixo.
+function feeSegments(profile, sku){
+  const mk = (commission, service, transaction, fixedFee, serviceCap) =>
+    ({commission:Number(commission)||0, service:Number(service)||0, transaction:Number(transaction)||0,
+      fixedFee:Number(fixedFee)||0, serviceCap:Number(serviceCap)||0});
+
+  const tiersDoPerfil = (profile.tiered && Array.isArray(profile.tiers) && profile.tiers.length)
+    ? profile.tiers.slice().sort((a,b)=> (Number(a.min)||0) - (Number(b.min)||0))
+    : null;
+
+  const faixas = tiersDoPerfil
+    ? tiersDoPerfil.map((t,i)=>({
+        min: i===0 ? 0 : (Number(t.min)||0),   // a primeira faixa sempre cobre de zero pra cima
+        max: tiersDoPerfil[i+1] ? (Number(tiersDoPerfil[i+1].min)||0) : Infinity,
+        rates: mk(t.commission, t.service, t.transaction, t.fixedFee, t.serviceCap)
+      }))
+    : [{min:0, max:Infinity, rates: mk(profile.commission, profile.service, profile.transaction, effectiveFixedFee(profile, sku), 0)}];
+
+  const segs = [];
+  faixas.forEach(f=>{
+    const label = tierRangeLabel(f.min, f.max);
+    const pctCheio = (f.rates.commission + f.rates.service + f.rates.transaction)/100;
+    const svc = f.rates.service/100;
+    const cap = f.rates.serviceCap;
+    const limiar = (cap > 0 && svc > 0) ? cap/svc : Infinity;  // preço em que a taxa bate no teto
+    const semTeto = {min:f.min, max:Math.min(f.max, limiar), pct:pctCheio, fixed:f.rates.fixedFee, rates:f.rates, label, capBinds:false};
+    const comTeto = {min:Math.max(f.min, limiar), max:f.max, pct:pctCheio - svc, fixed:f.rates.fixedFee + cap, rates:f.rates, label, capBinds:true};
+    if(semTeto.max > semTeto.min) segs.push(semTeto);
+    if(limiar < f.max && comTeto.max > comTeto.min) segs.push(comTeto);
+  });
+  return segs.length ? segs : [{min:0, max:Infinity, pct:0, fixed:0, rates:mk(0,0,0,0,0), label:'', capBinds:false}];
+}
+
+function segmentForPrice(segs, price){
+  for(const s of segs){ if(price >= s.min && price < s.max) return s; }
+  return segs[segs.length-1];
+}
+
 function calcSku(profile, sku){
   const cc = effectiveCompanyCosts(sku);
-  const c = profile.commission/100, s = profile.service/100, t = profile.transaction/100;
   const tax = cc.taxPct/100, mk = cc.marketingPct/100;
-  const fixedFee = effectiveFixedFee(profile, sku);
-  const mktPct = c+s+t;                                    // % que o marketplace tira do preço de venda
-  const mktFixed = fixedFee + sku.coupon - sku.freightNet; // valores fixos do marketplace
-  const companyCosts = sku.cogs + cc.fixedCost + cc.misc; // custos fixos da empresa
-  let price;
+  const companyCosts = sku.cogs + cc.fixedCost + cc.misc;   // custos fixos da empresa
+  const extraFixed = sku.coupon - sku.freightNet;           // fixos que não vêm do marketplace
+  const segs = feeSegments(profile, sku);
+
+  // Margem sobre o valor recebido, dado um trecho de taxas.
+  const margemEm = (p, seg) => {
+    const net = p*(1-seg.pct) - seg.fixed - extraFixed;
+    const lucro = net - companyCosts - tax*p - mk*p;
+    return net !== 0 ? lucro/net : -Infinity;
+  };
+
+  let price, seg;
   if(sku.mode === 'margin'){
     // Margem definida sobre o valor que sobra na mão do vendedor (após o marketplace tirar a parte dele),
     // e não sobre o preço de venda total -- é assim que o valor realmente é sentido no caixa.
+    //
+    // Com faixas de preço a fórmula fechada só vale DENTRO de um trecho: resolve em cada um e
+    // fica com a solução que de fato cai no próprio trecho. Resolver com as taxas de uma faixa
+    // e acabar num preço de outra daria uma margem que não se realiza.
     const m = sku.marginTarget/100;
-    const denom = (1 - mktPct) * (1 - m) - (tax + mk);
-    if(denom <= 0) return {error:true, m, mktPct, tax, mk};
-    const numer = companyCosts + mktFixed * (1 - m);
-    price = numer / denom;
-    if(!isFinite(price) || price <= 0){ return {error:true, m, mktPct, tax, mk}; }
-    const checkNet = price*(1-mktPct) - mktFixed;
-    if(checkNet <= 0){ return {error:true, m, mktPct, tax, mk}; }
+    const solucoes = [];
+    segs.forEach(sg=>{
+      const denom = (1 - sg.pct) * (1 - m) - (tax + mk);
+      if(denom <= 0) return;
+      const p = (companyCosts + (sg.fixed + extraFixed) * (1 - m)) / denom;
+      if(!isFinite(p) || p <= 0) return;
+      if(p >= sg.min - 1e-9 && p < sg.max) solucoes.push({p, sg});
+    });
+    // Faixas mal encaixadas podem deixar um vão: nenhum preço dentro do próprio trecho atinge a
+    // margem, mas o primeiro preço da faixa seguinte atinge. Nesse caso vale a virada de faixa.
+    if(solucoes.length === 0){
+      segs.forEach(sg=>{
+        if(sg.min <= 0 || !isFinite(sg.min)) return;
+        if(margemEm(sg.min, sg) >= m - 1e-9) solucoes.push({p: sg.min, sg});
+      });
+    }
+    if(solucoes.length === 0) return {error:true, m, mktPct: segs[0].pct, tax, mk};
+    solucoes.sort((a,b)=> a.p - b.p);   // entre preços que servem, o menor é o mais competitivo
+    price = solucoes[0].p; seg = solucoes[0].sg;
+    if(price*(1-seg.pct) - seg.fixed - extraFixed <= 0) return {error:true, m, mktPct: seg.pct, tax, mk};
   } else {
     price = sku.price;
+    seg = segmentForPrice(segs, price);
   }
-  const commissionVal = c*price, serviceVal = s*price, transactionVal = t*price;
+
+  const rates = seg.rates;
+  const commissionVal = rates.commission/100*price;
+  const servicoCheio = rates.service/100*price;
+  const serviceVal = (rates.serviceCap > 0) ? Math.min(servicoCheio, rates.serviceCap) : servicoCheio;
+  const transactionVal = rates.transaction/100*price;
+  const fixedFee = rates.fixedFee;
   const taxVal = tax*price, marketingVal = mk*price;
   const feesTotal = commissionVal+serviceVal+transactionVal+fixedFee;
   const netMarketplace = price - feesTotal - sku.coupon + sku.freightNet;
@@ -801,7 +950,9 @@ function calcSku(profile, sku){
   return {price, commissionVal, serviceVal, transactionVal, fixedFee,
     coupon:sku.coupon, freightNet:sku.freightNet, feesTotal, netMarketplace,
     cogs:sku.cogs, fixedCost:cc.fixedCost, misc:cc.misc, taxVal, marketingVal, profit,
-    marginPct: marginOnNet, marginOnNet, marginOnPrice};
+    marginPct: marginOnNet, marginOnNet, marginOnPrice,
+    rates, tierLabel: seg.label, capBinds: seg.capBinds && servicoCheio > rates.serviceCap,
+    tiered: segs.length > 1};
 }
 
 function renderTopDisclaimer(){
@@ -956,17 +1107,18 @@ function renderReceiptPanel(){
 
   const heroLabel = sku.mode==='margin' ? 'Preço de venda necessário' : 'Preço de venda cadastrado';
   const ad = adPrices(r.price, profile);
-  const fixedFeeLabel = profile.variableFixedFee ? 'Taxa fixa deste anúncio' : 'Taxa fixa por item';
+  const fixedFeeLabel = profile.tiered ? 'Taxa fixa da faixa'
+    : (profile.variableFixedFee ? 'Taxa fixa deste anúncio' : 'Taxa fixa por item');
   outer.innerHTML = `<div class="torn"></div><div class="receipt">
     ${cab}${avisos}
     <div class="price-hero"><div class="k">${heroLabel}</div><div class="v">${brl(r.price)}</div></div>
     ${line('Preço do produto', r.price)}
     ${r.freightNet !== 0 ? line('Frete: ganho/subsídio líquido', r.freightNet, r.freightNet<0?'neg':'pos') : ''}
     ${r.coupon !== 0 ? line('Cupom pago pelo vendedor', -r.coupon, 'neg') : ''}
-    <div class="rline section"><span class="lbl">Taxas do marketplace</span><span class="val">-${brl(r.commissionVal+r.serviceVal+r.transactionVal+r.fixedFee)}</span></div>
-    ${line('Comissão ('+pct(profile.commission)+')', -r.commissionVal, 'neg')}
-    ${profile.service ? line('Taxa de serviço ('+pct(profile.service)+')', -r.serviceVal, 'neg') : ''}
-    ${profile.transaction ? line('Taxa de transação ('+pct(profile.transaction)+')', -r.transactionVal, 'neg') : ''}
+    <div class="rline section"><span class="lbl">Taxas do marketplace${r.tierLabel ? ' &middot; faixa ' + esc(r.tierLabel) : ''}</span><span class="val">-${brl(r.commissionVal+r.serviceVal+r.transactionVal+r.fixedFee)}</span></div>
+    ${line('Comissão ('+pct(r.rates.commission)+')', -r.commissionVal, 'neg')}
+    ${r.rates.service ? line('Taxa de serviço / envio ('+pct(r.rates.service)+(r.capBinds?', no teto':'')+')', -r.serviceVal, 'neg') : ''}
+    ${r.rates.transaction ? line('Taxa de transação ('+pct(r.rates.transaction)+')', -r.transactionVal, 'neg') : ''}
     ${line(fixedFeeLabel, -r.fixedFee, r.fixedFee>0?'neg':'')}
     <div class="divider"></div>
     ${line('Valor que sobra na sua mão', r.netMarketplace, 'pos')}
@@ -1069,7 +1221,8 @@ function openSkuForm(id){
     const freight = document.getElementById('f_freightRow');
     const fee = document.getElementById('f_feeRow');
     if(freight) freight.style.display = anyProfileFlag('variableFreight') ? 'flex' : 'none';
-    if(fee) fee.style.display = anyProfileFlag('variableFixedFee') ? 'flex' : 'none';
+    // num marketplace com faixas de preço quem define a taxa fixa é a faixa, não o produto
+    if(fee) fee.style.display = (anyProfileFlag('variableFixedFee') && !anyProfileFlag('tiered')) ? 'flex' : 'none';
     updateLivePreview();
   }
 
@@ -1847,20 +2000,78 @@ const fieldDefs = [
   {key:'transaction', label:'Taxa de transação -- %'}
 ];
 const mktToggles = [
+  {key:'tiered', label:'Taxas por faixa de preço',
+   hint:'Quando o marketplace cobra percentuais e taxa fixa diferentes conforme o valor do produto (caso do TikTok Shop). Substitui os percentuais únicos acima.'},
   {key:'dualAdPrice', label:'Constar valor antes do anúncio',
    hint:'Mostra também o valor +40% (preço "de"), além do +20%.'},
   {key:'variableFreight', label:'Frete variável por produto',
    hint:'Libera o campo de frete no cadastro de cada produto.'},
   {key:'variableFixedFee', label:'Taxa fixa variável por anúncio',
-   hint:'Quando a taxa fixa muda de anúncio para anúncio (faixa de preço, categoria, tipo de anúncio). Libera o campo de taxa fixa dentro de cada produto e ignora o valor único acima.'}
+   hint:'Quando a taxa fixa muda de anúncio para anúncio, sem seguir faixa de preço. Libera o campo de taxa fixa dentro de cada produto. Ignorado se as faixas de preço estiverem ligadas.'}
 ];
+
+// Editor das faixas de preço de um marketplace. Cada faixa vale do "preço a partir de" até o
+// início da faixa seguinte; a primeira sempre começa em zero, por isso o campo dela fica travado.
+function tierEditorHtml(p){
+  const tiers = (p.tiers && p.tiers.length) ? p.tiers : [{min:0, commission:0, service:0, transaction:0, fixedFee:0, serviceCap:0}];
+  const linhas = tiers.map((t,i)=>{
+    const max = tiers[i+1] ? Number(tiers[i+1].min)||0 : Infinity;
+    const faixa = tierRangeLabel(i===0 ? 0 : (Number(t.min)||0), max) || 'todos os preços';
+    const total = (Number(t.commission)||0)+(Number(t.service)||0)+(Number(t.transaction)||0);
+    return `<div class="tier" data-tier="${i}">
+      <div class="tier-head">
+        <span class="tier-badge">Faixa ${i+1}</span>
+        <span class="tier-range">${faixa} &nbsp;&middot;&nbsp; ${total.toLocaleString('pt-BR',{maximumFractionDigits:2})}% + ${brl(Number(t.fixedFee)||0)}</span>
+        <span style="flex:1;"></span>
+        <button class="btn small danger" data-deltier="${i}" ${tiers.length<=1?'disabled':''}>Remover</button>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Preço a partir de -- R$</label><input type="number" step="0.01" data-tf="min" value="${esc(i===0?0:t.min)}" ${i===0?'disabled title="A primeira faixa sempre começa em zero"':''}></div>
+        <div class="field"><label>Comissão -- %</label><input type="number" step="0.01" data-tf="commission" value="${esc(t.commission)}"></div>
+        <div class="field"><label>Taxa de serviço / envio -- %</label><input type="number" step="0.01" data-tf="service" value="${esc(t.service)}"></div>
+        <div class="field"><label>Teto da taxa de serviço -- R$<span class="hint">0 = sem teto. Ex.: Programa de Envio 6% limitado a R$ 50,00 por item.</span></label><input type="number" step="0.01" data-tf="serviceCap" value="${esc(t.serviceCap)}"></div>
+        <div class="field"><label>Taxa de transação -- %</label><input type="number" step="0.01" data-tf="transaction" value="${esc(t.transaction)}"></div>
+        <div class="field"><label>Taxa fixa por item -- R$</label><input type="number" step="0.01" data-tf="fixedFee" value="${esc(t.fixedFee)}"></div>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="section-label">Faixas de preço</div>
+    <p class="sub" style="margin:8px 0 10px;">Cada faixa vale do preço indicado até o início da faixa seguinte. O sistema escolhe a faixa sozinho pelo preço calculado -- inclusive quando você informa a margem desejada e ele precisa descobrir o preço.</p>
+    ${linhas}
+    <div class="form-actions" style="margin-top:4px;"><button class="btn small" data-addtier="${esc(p.id)}">+ Adicionar faixa</button></div>
+    <div class="tier-sim" data-tiersim></div>`;
+}
+
+// Mostra o que o vendedor recebe em alguns preços, para a faixa certa ficar visível na hora
+// de conferir as regras -- é como o dono do sistema validou os números do TikTok Shop.
+function tierSimHtml(p){
+  if(!p.tiered) return '';
+  const pontos = [];
+  (p.tiers||[]).forEach((t,i)=>{
+    const min = i===0 ? 0 : (Number(t.min)||0);
+    pontos.push(min > 0 ? min : 40);
+    if(min > 0) pontos.push(min * 2);
+  });
+  const svc = (p.tiers||[]).find(t=>Number(t.serviceCap)>0);
+  if(svc && Number(svc.service)>0) pontos.push(Math.ceil(Number(svc.serviceCap)/(Number(svc.service)/100)/10)*10 + 100);
+  const unicos = Array.from(new Set(pontos.filter(v=>v>0))).sort((a,b)=>a-b).slice(0,6);
+  const linhas = unicos.map(preco=>{
+    const r = calcSku(p, {cogs:0, fixedCost:0, misc:0, taxPct:0, marketingPct:0, coupon:0, freightNet:0,
+      mktFixedFee:0, mode:'price', price:preco, marginTarget:0, costOverride:true});
+    return `<tr><td class="num">${brl(preco)}</td><td class="num neg">-${brl(r.feesTotal)}</td>
+      <td class="num pos">${brl(r.netMarketplace)}</td><td style="color:var(--ink-mute);font-size:11px;">${esc(r.tierLabel||'faixa única')}${r.capBinds?' &middot; teto aplicado':''}</td></tr>`;
+  }).join('');
+  return `<div class="section-label" style="margin-top:14px;">Conferência rápida</div>
+    <p class="sub" style="margin:8px 0 8px;">Quanto sobra na sua mão em cada preço, sem contar custos da empresa, cupom ou frete.</p>
+    <table><thead><tr><th class="num">Preço</th><th class="num">Taxas</th><th class="num">Você recebe</th><th>Faixa</th></tr></thead><tbody>${linhas}</tbody></table>`;
+}
 
 function renderMarketplaces(){
   const box = document.getElementById('mktCards');
   const usageCount = id => state.skus.filter(s=>s.marketplaceId===id).length;
   box.innerHTML = state.profiles.map(p=>{
     const used = usageCount(p.id);
-    return `<div class="card" data-mktid="${esc(p.id)}">
+    return `<div class="card${p.tiered?' wide':''}" data-mktid="${esc(p.id)}">
       <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px;">
         <span class="mkt-dot" style="background:${esc(p.color)};width:10px;height:10px;margin:0;"></span>
         <span class="confidence conf-${esc(p.confidence)}">${p.confidence==='alta'?'Verificado':(p.confidence==='media'?'Fontes de terceiros':'Não oficial')}</span>
@@ -1877,8 +2088,11 @@ function renderMarketplaces(){
         </select>
       </div>
       <div class="field textrow"><label>Observação / fonte</label><textarea data-mf="note">${esc(p.note)}</textarea></div>
-      ${fieldDefs.map(f=>`<div class="field"><label>${f.label}</label><input type="number" step="0.01" data-mf="${f.key}" value="${esc(p[f.key])}"></div>`).join('')}
-      <div class="field" data-fixedfeerow style="${p.variableFixedFee?'display:none;':''}"><label>Taxa fixa por item -- R$</label><input type="number" step="0.01" data-mf="fixedFee" value="${esc(p.fixedFee)}"></div>
+      <div data-flatrates style="${p.tiered?'display:none;':''}">
+        ${fieldDefs.map(f=>`<div class="field"><label>${f.label}</label><input type="number" step="0.01" data-mf="${f.key}" value="${esc(p[f.key])}"></div>`).join('')}
+        <div class="field" data-fixedfeerow style="${p.variableFixedFee?'display:none;':''}"><label>Taxa fixa por item -- R$</label><input type="number" step="0.01" data-mf="fixedFee" value="${esc(p.fixedFee)}"></div>
+      </div>
+      <div data-tierblock style="${p.tiered?'':'display:none;'}">${tierEditorHtml(p)}</div>
       <div class="section-label">Comportamento</div>
       ${mktToggles.map(t=>`
         <div class="field">
@@ -1905,10 +2119,54 @@ function renderMarketplaces(){
         }
       });
     });
+    // ---- faixas de preço ----
+    const simBox = card.querySelector('[data-tiersim]');
+    const atualizaSim = ()=>{ if(simBox) simBox.innerHTML = tierSimHtml(profileOf(id)); };
+    atualizaSim();
+    card.querySelectorAll('.tier').forEach(bloco=>{
+      const i = parseInt(bloco.dataset.tier);
+      bloco.querySelectorAll('[data-tf]').forEach(inp=>{
+        inp.addEventListener('input', ()=>{
+          const p = profileOf(id);
+          if(!p.tiers[i]) return;
+          p.tiers[i][inp.dataset.tf] = parseFloat(inp.value)||0;
+          saveState();
+          atualizaSim();
+          renderProdutos();
+        });
+        // reordena e redesenha só ao sair do campo: reordenar a cada tecla faria o campo
+        // perder o foco no meio da digitação
+        if(inp.dataset.tf === 'min') inp.addEventListener('blur', ()=>{ normalizeProfile(profileOf(id)); saveState(); renderMarketplaces(); });
+      });
+    });
+    card.querySelectorAll('[data-deltier]').forEach(b=>{
+      b.onclick = ()=>{
+        const p = profileOf(id);
+        if(p.tiers.length<=1) return;
+        p.tiers.splice(parseInt(b.dataset.deltier), 1);
+        saveState(); renderMarketplaces(); renderProdutos();
+      };
+    });
+    const addTier = card.querySelector('[data-addtier]');
+    if(addTier) addTier.onclick = ()=>{
+      const p = profileOf(id);
+      const ultima = p.tiers[p.tiers.length-1] || {min:0, commission:0, service:0, transaction:0, fixedFee:0, serviceCap:0};
+      p.tiers.push(Object.assign({}, ultima, {min: (Number(ultima.min)||0) + 50}));
+      saveState(); renderMarketplaces(); renderProdutos();
+    };
+
     card.querySelectorAll('[data-mfcheck]').forEach(chk=>{
       chk.addEventListener('change', ()=>{
         const p = profileOf(id);
         p[chk.dataset.mfcheck] = chk.checked;
+        if(chk.dataset.mfcheck === 'tiered'){
+          if(chk.checked && (!p.tiers || p.tiers.length === 0)){
+            // começa a partir das taxas únicas que já estavam lá, para o número não mudar sozinho
+            p.tiers = [{min:0, commission:p.commission, service:p.service, transaction:p.transaction, fixedFee:p.fixedFee, serviceCap:0}];
+          }
+          saveState(); renderMarketplaces(); renderProdutos();
+          return;
+        }
         if(chk.dataset.mfcheck === 'variableFixedFee'){
           const row = card.querySelector('[data-fixedfeerow]');
           if(row) row.style.display = chk.checked ? 'none' : 'flex';
@@ -1944,15 +2202,36 @@ function renderMarketplaces(){
     };
   });
 }
-document.getElementById('newMktBtn').onclick = ()=>{
+function adicionarMarketplace(presetKey){
   const palette = ['#c9a24a','#5dcaa5','#7f77dd','#d4537e','#3f9ee0','#e09f27'];
-  const p = {id: uid(), label:'Novo marketplace', color: palette[state.profiles.length % palette.length],
-    confidence:'baixa', note:'Preencha com os valores reais deste canal de venda.',
-    commission:0, service:0, transaction:0, fixedFee:0, dualAdPrice:false, variableFreight:false};
+  const preset = PRESETS.find(x=>x.key===presetKey) || PRESETS[PRESETS.length-1];
+  const base = JSON.parse(JSON.stringify(preset.data));   // cópia: faixas não podem compartilhar a lista do modelo
+  if(state.profiles.some(p=> p.label.toLowerCase() === String(base.label).toLowerCase())){
+    if(!confirm(`Já existe um marketplace chamado "${base.label}". Adicionar outro assim mesmo?\n\nAtenção: o nome vira sufixo do SKU, então dois com o mesmo nome geram SKUs iguais.`)) return;
+  }
+  const p = Object.assign({
+    id: uid(), color: palette[state.profiles.length % palette.length],
+    dualAdPrice:false, variableFreight:false, variableFixedFee:false, tiered:false, tiers:[]
+  }, base);
+  normalizeProfile(p);
   state.profiles.push(p);
   saveState();
   renderMarketplaces();
+  renderProdutos();
+  toast(`"${p.label}" adicionado. Confira as taxas antes de usar.`, 'ok');
+  const card = document.querySelector(`[data-mktid="${p.id}"]`);
+  if(card) card.scrollIntoView({block:'center', behavior:'smooth'});
+}
+document.getElementById('newMktBtn').onclick = ()=>{
+  const menu = document.getElementById('newMktMenu');
+  menu.hidden = !menu.hidden;
 };
+document.getElementById('newMktMenu').addEventListener('click', (e)=>{
+  const b = e.target.closest('[data-preset]');
+  if(!b) return;
+  document.getElementById('newMktMenu').hidden = true;
+  adicionarMarketplace(b.dataset.preset);
+});
 
 // ---------- PADRÕES VIEW ----------
 function renderPadroes(){
@@ -2082,6 +2361,7 @@ function writeObjectsToSheet(name, headers, objects, textFields) {
     return headers.map(function (h) {
       var v = obj[h];
       if (v === undefined || v === null) return '';
+      if (typeof v === 'object') v = JSON.stringify(v); // listas (as faixas de preço) viajam como JSON numa célula só
       if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE'; // grava booleano como texto explícito, sem depender de como o Sheets internamente trataria um valor true/false
       if (textSet.indexOf(h) !== -1 && v !== '') return "'" + String(v); // apóstrofo força texto puro (o mesmo truque de digitar '07-01-46 na planilha) -- é a forma mais confiável de impedir o Sheets de reinterpretar SKUs parecidos com data
       return v;
@@ -2094,7 +2374,7 @@ function writeObjectsToSheet(name, headers, objects, textFields) {
   }
 }
 
-var MKT_HEADERS = ['id','label','color','confidence','note','commission','service','transaction','fixedFee','dualAdPrice','variableFreight','variableFixedFee'];
+var MKT_HEADERS = ['id','label','color','confidence','note','commission','service','transaction','fixedFee','dualAdPrice','variableFreight','variableFixedFee','tiered','tiers'];
 var SKU_HEADERS = ['id','sku','name','marketplaceId','cogs','fixedCost','misc','taxPct','marketingPct','coupon','freightNet','mktFixedFee','mode','price','marginTarget','costOverride'];
 var PAD_HEADERS = ['fixedCost','misc','taxPct','marketingPct','coupon','freightNet'];
 
@@ -2108,7 +2388,7 @@ function readAll() {
 }
 
 function writeAll(state) {
-  writeObjectsToSheet('Marketplaces', MKT_HEADERS, state.profiles || [], ['id','label']);
+  writeObjectsToSheet('Marketplaces', MKT_HEADERS, state.profiles || [], ['id','label','tiers']);
   writeObjectsToSheet('Produtos', SKU_HEADERS, state.skus || [], ['id','sku','marketplaceId']);
   writeObjectsToSheet('Padroes', PAD_HEADERS, [state.padroes || {}], []);
 }`;
@@ -2149,6 +2429,12 @@ function renderStorageNote(){
 }
 
 // ---------- init ----------
+document.getElementById('newMktMenu').innerHTML = PRESETS.map(p=>
+  `<button class="menu-item" data-preset="${esc(p.key)}"><strong>${esc(p.label)}</strong><span>${esc(p.hint)}</span></button>`).join('');
+document.addEventListener('click', (e)=>{
+  const menu = document.getElementById('newMktMenu');
+  if(!menu.hidden && !e.target.closest('.menu-wrap')) menu.hidden = true;
+});
 renderTopDisclaimer();
 renderStorageNote();
 renderSyncPill();
