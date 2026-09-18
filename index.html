@@ -548,7 +548,7 @@
 
       <div class="card">
         <h2>Código para colar no Apps Script</h2>
-        <div class="banner" style="margin:12px 0;"><svg class="bi"><use href="#i-warn"/></svg><div>Este código mudou na versão atual do sistema (ganhou as colunas <code>variableFixedFee</code>, <code>mktFixedFee</code>, <code>tiered</code> e <code>tiers</code>). Se a sua planilha já estava conectada, cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. Sem isso, a taxa fixa por anúncio e as faixas de preço funcionam no navegador mas somem ao sincronizar.</div></div>
+        <div class="banner" style="margin:12px 0;"><svg class="bi"><use href="#i-warn"/></svg><div>Este é o código <strong>versão 3</strong>: guarda as faixas de preço e a taxa fixa por anúncio, trava gravações simultâneas e recusa que um dispositivo desatualizado apague o que outro salvou. O sistema não grava em planilhas com versão anterior. Se a sua planilha já estava conectada, cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. Sem isso, a taxa fixa por anúncio e as faixas de preço funcionam no navegador mas somem ao sincronizar.</div></div>
         <div class="form-actions" style="margin:0 0 12px;"><button class="btn small" id="copyCodeBtn">Copiar código</button></div>
         <pre class="codeblock" id="gasCode"></pre>
       </div>
@@ -710,6 +710,13 @@ let syncing = false;
 let lastSyncOk = null;
 let lastSyncTime = null;
 let lastSyncError = '';
+// Revisão da planilha que este navegador conhece. null = ainda não conseguiu ler nesta sessão,
+// e nesse caso nada é enviado: gravar sem ter lido poderia apagar o que outro dispositivo salvou.
+let revPlanilha = null;
+let versaoScript = null;
+let scriptDesatualizado = false;
+const GAS_VERSAO_MINIMA = 3;
+const MSG_SCRIPT_ANTIGO = 'O código do Apps Script na sua planilha está desatualizado: ele não guarda as faixas de preço nem a taxa fixa por anúncio, e as descartaria sem avisar. Para não apagar dados, nada foi enviado. Abra a aba Sincronização, copie o código novo, cole no Apps Script e publique uma NOVA VERSÃO da implantação existente (Implantar → Gerenciar implantações → lápis → Nova versão).';
 
 function saveState(){
   store.set(STORAGE_KEY, JSON.stringify(state));
@@ -724,24 +731,58 @@ function scheduleSync(){
 }
 
 async function pushToSheets(){
+  syncTimer = null;
   if(!gasUrl) return;
+  if(scriptDesatualizado){
+    lastSyncOk = false; lastSyncError = MSG_SCRIPT_ANTIGO;
+    renderSyncPill(); atualizaTelaDeSync(); return;
+  }
+  if(revPlanilha === null){
+    lastSyncOk = false;
+    lastSyncError = 'Ainda não consegui ler a planilha nesta sessão, então as alterações estão só neste navegador -- enviar sem ter lido poderia apagar o que outro dispositivo salvou. Use "Sincronizar agora" quando a conexão voltar (isso recarrega os dados da planilha).';
+    renderSyncPill(); atualizaTelaDeSync(); return;
+  }
   syncing = true;
   renderSyncPill('syncing');
+  let conflito = false;
   try{
     const res = await fetch(gasUrl, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({action:'saveAll', state})
+      body: JSON.stringify({action:'saveAll', baseRev: revPlanilha, state})
     });
     const data = await res.json();
-    if(!data.ok) throw new Error(data.error || 'Erro desconhecido retornado pelo script.');
-    lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
+    if(data.conflict){ conflito = true; }
+    else {
+      if(!data.ok) throw new Error(data.error || 'Erro desconhecido retornado pelo script.');
+      revPlanilha = Number(data.rev);
+      lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
+    }
   }catch(err){
-    lastSyncOk = false; lastSyncError = err.message || String(err);
+    lastSyncOk = false; lastSyncError = mensagemDeErroDeRede(err);
   }
   syncing = false;
+  if(conflito){
+    // Outro dispositivo gravou primeiro. Em vez de sobrescrever o trabalho dele, recarrega a
+    // planilha. A alteração feita aqui não entra -- e o usuário é avisado disso.
+    await pullFromSheets(false);
+    toast('Outro dispositivo salvou alterações na planilha antes deste. Recarreguei os dados de lá; a última mudança feita aqui não foi gravada -- refaça se ainda precisar.', 'warn', 'Conflito de sincronização');
+    return;
+  }
   renderSyncPill();
+  atualizaTelaDeSync();
+}
+
+function atualizaTelaDeSync(){
   if(document.getElementById('view-sync').classList.contains('active')) renderSyncView();
+}
+
+// "Failed to fetch" não diz nada a ninguém; e a resposta HTML de login do Google quebra o JSON
+function mensagemDeErroDeRede(err){
+  const m = (err && err.message) || String(err);
+  if(/Unexpected token '<'|is not valid JSON/i.test(m)) return 'O Apps Script respondeu uma página em vez de dados. Confira se a implantação está com acesso "Qualquer pessoa" (não "Qualquer pessoa com Conta do Google").';
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m)) return 'Sem conexão com a planilha agora. As alterações continuam salvas neste navegador.';
+  return m;
 }
 
 async function pullFromSheets(showAlerts){
@@ -751,7 +792,15 @@ async function pullFromSheets(showAlerts){
   try{
     const res = await fetch(gasUrl, {method:'GET'});
     const data = await res.json();
+    if(data.ok === false) throw new Error(data.error || 'O Apps Script devolveu um erro.');
     if(!data.profiles || !data.skus) throw new Error('A planilha respondeu, mas sem o formato esperado. Confira se o código do Apps Script foi colado certo.');
+    versaoScript = Number(data.version) || 1;
+    if(versaoScript < GAS_VERSAO_MINIMA){
+      scriptDesatualizado = true;
+      throw new Error(MSG_SCRIPT_ANTIGO);
+    }
+    scriptDesatualizado = false;
+    revPlanilha = Number(data.rev) || 0;
     // Planilha vazia (primeira conexão) -- envia os dados locais para lá em vez de apagar tudo.
     // A checagem cobre produtos também: uma planilha com marketplaces mas sem nenhum produto
     // apagaria silenciosamente o catálogo local no primeiro pull automático da abertura.
@@ -774,8 +823,8 @@ async function pullFromSheets(showAlerts){
     }
     lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
   }catch(err){
-    lastSyncOk = false; lastSyncError = err.message || String(err);
-    if(showAlerts) toast(lastSyncError, 'err', 'Não foi possível sincronizar');
+    lastSyncOk = false; lastSyncError = scriptDesatualizado ? MSG_SCRIPT_ANTIGO : mensagemDeErroDeRede(err);
+    if(showAlerts || scriptDesatualizado) toast(lastSyncError, 'err', scriptDesatualizado ? 'Apps Script desatualizado' : 'Não foi possível sincronizar');
   }
   syncing = false;
   renderSyncPill();
@@ -806,7 +855,9 @@ function normalizeProfile(p){
   // As faixas de preço são uma lista de objetos. Uma célula do Google Sheets só guarda texto,
   // então elas viajam como JSON e voltam como string -- precisa desserializar aqui.
   if(typeof p.tiers === 'string'){
-    try{ p.tiers = JSON.parse(p.tiers || '[]'); }catch(e){ p.tiers = []; }
+    const txt = p.tiers.trim().replace(/^'/, '');   // prefixo de texto puro do Sheets, se vier
+    try{ p.tiers = JSON.parse(txt || '[]'); }
+    catch(e){ console.warn('Faixas ilegíveis no marketplace ' + p.label, p.tiers); p.tiers = []; }
   }
   if(!Array.isArray(p.tiers)) p.tiers = [];
   p.tiers = p.tiers.map(t=>({
@@ -836,7 +887,7 @@ function renderSyncPill(forceState){
   const st = forceState || (syncing ? 'syncing' : (lastSyncOk===false ? 'error' : 'ok'));
   if(st==='pending'){ pill.className='sync-pill sync-warn'; txt.textContent='Alterações pendentes...'; }
   else if(st==='syncing'){ pill.className='sync-pill sync-warn'; txt.textContent='Sincronizando...'; }
-  else if(st==='error'){ pill.className='sync-pill sync-err'; txt.textContent='Erro ao sincronizar'; }
+  else if(st==='error'){ pill.className='sync-pill sync-err'; txt.textContent = scriptDesatualizado ? 'Apps Script desatualizado' : 'Erro ao sincronizar'; }
   else { pill.className='sync-pill sync-ok'; txt.textContent='Sincronizado com Google Sheets'; }
 }
 
@@ -850,7 +901,8 @@ function renderSyncView(){
   } else if(lastSyncOk===false){
     detail.textContent = 'Conectado, mas a última tentativa falhou: ' + lastSyncError;
   } else if(lastSyncTime){
-    detail.textContent = 'Conectado. Última sincronização bem-sucedida às ' + lastSyncTime.toLocaleTimeString('pt-BR') + '.';
+    detail.textContent = 'Conectado. Última sincronização bem-sucedida às ' + lastSyncTime.toLocaleTimeString('pt-BR')
+      + '. Apps Script versão ' + versaoScript + ', revisão ' + revPlanilha + ' da planilha.';
   } else {
     detail.textContent = 'Conectado. Aguardando primeira sincronização.';
   }
@@ -1298,7 +1350,9 @@ function renderTable(){
     tr.addEventListener('click', (e)=>{
       if(e.target.closest('button')) return;
       state.selectedSkuId = tr.dataset.id;
-      saveState();
+      // só lembra a seleção neste navegador; mandar a planilha inteira por causa de um clique
+      // fazia uma aba desatualizada sobrescrever o que outro dispositivo tinha salvo
+      store.set(STORAGE_KEY, JSON.stringify(state));
       renderTable();
       renderReceiptPanel();
     });
@@ -2550,21 +2604,61 @@ document.getElementById('resetBtn').onclick = ()=>{
 };
 
 // ---------- SINCRONIZAÇÃO (Google Sheets) ----------
-const GAS_CODE = `function doGet(e) {
-  return jsonResponse(readAll());
+const GAS_CODE = `// Versão do código. O sistema confere este número e se recusa a gravar numa planilha cujo
+// script seja mais antigo -- script antigo descarta em silêncio as colunas que não conhece.
+var SCRIPT_VERSION = 3;
+
+function doGet(e) {
+  return comTrava(function () {
+    var dados = readAll();
+    dados.version = SCRIPT_VERSION;
+    dados.rev = revisaoAtual();
+    return jsonResponse(dados);
+  });
 }
 
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
-    if (body.action === 'saveAll') {
+    if (body.action !== 'saveAll') return jsonResponse({ok:false, error:'Ação desconhecida: ' + body.action});
+    return comTrava(function () {
+      var atual = revisaoAtual();
+      // página antiga em cache em algum dispositivo: não sabe de revisões e sobrescreveria tudo
+      if (body.baseRev === undefined || body.baseRev === null) {
+        return jsonResponse({ok:false, outdatedClient:true,
+          error:'Esta página do sistema está desatualizada. Recarregue com Ctrl+Shift+R e tente de novo.'});
+      }
+      // outro dispositivo salvou depois da última leitura deste: gravar agora apagaria o trabalho dele
+      if (Number(body.baseRev) !== atual) {
+        return jsonResponse({ok:false, conflict:true, rev:atual,
+          error:'A planilha foi alterada em outro dispositivo depois da última leitura deste.'});
+      }
       writeAll(body.state);
-      return jsonResponse({ok:true});
-    }
-    return jsonResponse({ok:false, error:'Ação desconhecida: ' + body.action});
+      var nova = atual + 1;
+      PropertiesService.getScriptProperties().setProperty('rev', String(nova));
+      return jsonResponse({ok:true, rev:nova, version:SCRIPT_VERSION});
+    });
   } catch (err) {
     return jsonResponse({ok:false, error: err.message});
   }
+}
+
+// Uma gravação por vez. Sem isto, dois dispositivos salvando juntos intercalam o 'limpa a aba'
+// de um com o 'escreve as linhas' do outro, e uma leitura no meio enxerga a planilha vazia.
+function comTrava(fn) {
+  var trava = LockService.getScriptLock();
+  try { trava.waitLock(20000); }
+  catch (e) {
+    return jsonResponse({ok:false, busy:true,
+      error:'A planilha está ocupada salvando outro dispositivo. Tente de novo em alguns segundos.'});
+  }
+  try { return fn(); }
+  catch (err) { return jsonResponse({ok:false, error: err.message}); }
+  finally { trava.releaseLock(); }
+}
+
+function revisaoAtual() {
+  return Number(PropertiesService.getScriptProperties().getProperty('rev')) || 0;
 }
 
 function jsonResponse(obj) {
@@ -2654,6 +2748,7 @@ document.getElementById('connectBtn').onclick = ()=>{
   const url = document.getElementById('gasUrlInput').value.trim();
   if(!url){ toast('Cole a URL do Web App do Apps Script primeiro.', 'err'); return; }
   gasUrl = url;
+  revPlanilha = null; scriptDesatualizado = false; versaoScript = null;
   store.set('mkt_pricing_gas_url', gasUrl);
   renderSyncPill();
   pullFromSheets(true);
@@ -2665,6 +2760,7 @@ document.getElementById('syncNowBtn').onclick = ()=>{
 document.getElementById('disconnectBtn').onclick = ()=>{
   if(!confirm('Desconectar do Google Sheets? Os dados continuam salvos neste navegador, mas deixam de sincronizar.')) return;
   gasUrl = '';
+  revPlanilha = null; scriptDesatualizado = false; versaoScript = null;
   store.del('mkt_pricing_gas_url');
   lastSyncOk = null; lastSyncTime = null; lastSyncError='';
   renderSyncPill();
@@ -2683,6 +2779,12 @@ renderStorageNote();
 renderSyncPill();
 irPara('produtos');
 if(gasUrl) pullFromSheets(false);
+// Uma aba aberta há horas não sabe o que outro dispositivo salvou. Ao voltar para ela, relê a
+// planilha -- desde que não haja alteração local esperando envio, que seria descartada.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState !== 'visible' || !gasUrl || syncing || syncTimer) return;
+  pullFromSheets(false);
+});
 </script>
 </body>
 </html>
