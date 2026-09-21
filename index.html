@@ -425,7 +425,16 @@
   .tabela-produtos tbody tr.selected td.canal-cell{box-shadow:inset 3px 0 0 var(--brand);}
   .tabela-produtos tbody tr.selected{box-shadow:none;background:transparent;}
   .tabela-produtos tbody tr.hover-grp .row-actions{opacity:1;}
-  .canal-cell{white-space:nowrap;}
+  .canal-cell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tabela-produtos{table-layout:fixed;}
+  /* soma das colunas fixas ~580 px: sobra o resto para o nome do produto */
+  .tabela-produtos col.c-prod{width:auto;} .tabela-produtos col.c-custo{width:76px;}
+  .tabela-produtos col.c-canal{width:128px;} .tabela-produtos col.c-num{width:84px;}
+  .tabela-produtos col.c-marg{width:62px;} .tabela-produtos col.c-anun{width:96px;}
+  .tabela-produtos col.c-acao{width:66px;}
+  .tabela-produtos td, .tabela-produtos th{padding-left:10px;padding-right:10px;}
+  .tabela-mais{display:flex;align-items:center;justify-content:center;gap:12px;padding:14px;
+    font-size:12px;color:var(--ink-mute);border-top:1px solid var(--line);}
   .tabela-produtos .muted{color:var(--ink-mute);}
   /* seletor de canais no recibo */
   .rc-canais{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 14px;}
@@ -915,7 +924,10 @@ let scriptDesatualizado = false;
 const GAS_VERSAO_MINIMA = 4;
 const MSG_SCRIPT_ANTIGO = 'O código do Apps Script na sua planilha está desatualizado: ele não guarda o agrupamento de produtos (produto pai com um anúncio por marketplace), e o descartaria sem avisar. Para não apagar dados, nada foi enviado. Abra a aba Sincronização, copie o código novo, cole no Apps Script e publique uma NOVA VERSÃO da implantação existente (Implantar → Gerenciar implantações → lápis → Nova versão).';
 
+// Avança a cada alteração de dado; o cache de cálculo compara com isto.
+let versaoDados = 0;
 function saveState(){
+  versaoDados++;
   store.set(STORAGE_KEY, JSON.stringify(state));
   scheduleSync();
 }
@@ -1013,6 +1025,7 @@ async function pullFromSheets(showAlerts){
         padroes: Object.keys(data.padroes||{}).length ? data.padroes : state.padroes,
         selectedSkuId: state.selectedSkuId
       }) || state;
+      versaoDados++;   // dados novos vindos da planilha: resultados guardados não valem mais
       store.set(STORAGE_KEY, JSON.stringify(state));
       renderProdutos();
       if(document.getElementById('view-marketplaces').classList.contains('active')) renderMarketplaces();
@@ -1108,8 +1121,14 @@ function renderSyncView(){
 }
 
 
-const brl = v => (isFinite(v)?v:0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-const pct = v => (isFinite(v)?v:0).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
+// Formatadores criados uma vez só. toLocaleString monta um formatador novo a cada chamada, e numa
+// tabela grande (milhares de valores) isso sozinho custava ~100 ms por desenho. Mesmo texto.
+const FMT_BRL = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+const FMT_PCT = new Intl.NumberFormat('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const FMT_NUM2 = new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const FMT_ATE2 = new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
+const brl = v => FMT_BRL.format(isFinite(v)?v:0);
+const pct = v => FMT_PCT.format(isFinite(v)?v:0)+'%';
 // Marketplace excluído deixa produtos órfãos. Antes o sistema caía no primeiro marketplace da
 // lista e calculava com as taxas ERRADAS sem avisar; agora devolve um perfil neutro marcado
 // como ausente, para a interface poder mostrar que aquele produto precisa ser reatribuído.
@@ -1429,11 +1448,14 @@ function atualizarContadoresDoMenu(){
 // Um ciclo de desenho chama calcSku para a lista inteira duas vezes: uma nas métricas, outra
 // na tabela. Com faixas de preço o cálculo ficou mais caro (resolve em cada faixa), então o
 // resultado é reaproveitado dentro do mesmo ciclo. O cache vive só durante renderProdutos().
-let calcCache = null;
+// O resultado de cada anúncio fica guardado até algum dado mudar. Toda alteração passa por
+// saveState() (ou pela leitura da planilha), que avança versaoDados e descarta o cache -- então
+// clicar numa linha ou trocar de marketplace no recibo não recalcula nada.
+let cacheCalc = {versao: -1, mapa: new Map()};
 function calcDoSku(sku){
-  if(!calcCache) return calcSku(profileOf(sku.marketplaceId), sku);
-  let r = calcCache.get(sku.id);
-  if(r === undefined){ r = calcSku(profileOf(sku.marketplaceId), sku); calcCache.set(sku.id, r); }
+  if(cacheCalc.versao !== versaoDados) cacheCalc = {versao: versaoDados, mapa: new Map()};
+  let r = cacheCalc.mapa.get(sku.id);
+  if(r === undefined){ r = calcSku(profileOf(sku.marketplaceId), sku); cacheCalc.mapa.set(sku.id, r); }
   return r;
 }
 
@@ -1474,14 +1496,15 @@ function produtosFiltrados(){
 }
 
 function renderMetrics(){
-  const rows = listagens().map(calcDoSku);
+  const todos = listagens();
+  const rows = todos.map(calcDoSku);
   const valid = rows.filter(r=>!r.error);
   const avgMargin = valid.length ? valid.reduce((a,r)=>a+r.marginPct,0)/valid.length : 0;
   const losing = rows.filter(r=>r.error || r.marginPct<0).length;
   const totalProfit = valid.reduce((a,r)=>a+r.profit,0);
-  const orphans = listagens().filter(s=>profileOf(s.marketplaceId).missing).length;
+  const orphans = todos.filter(s=>profileOf(s.marketplaceId).missing).length;
   const overrides = state.products.filter(s=>s.costOverride).length;
-  const canais = new Set(listagens().map(s=> s.marketplaceId)).size;
+  const canais = new Set(todos.map(s=> s.marketplaceId)).size;
   document.getElementById('metrics').innerHTML = `
     <div class="metric"><div class="k">Produtos</div><div class="v">${state.products.length}</div>
       <div class="f">${rows.length} anúncio(s) em ${canais} marketplace(s)${overrides ? ' &middot; '+overrides+' com custo alterado' : ''}</div></div>
@@ -1523,9 +1546,29 @@ function renderTable(){
       Ajuste a busca ou o marketplace selecionado na barra acima.</div>`;
     return;
   }
-  // Tabela agrupada: as colunas do produto (SKU, nome, custo, ações) ocupam as linhas de todos os
-  // anúncios dele com rowspan; cada anúncio é uma linha própria, clicável, com o preço do canal.
-  const corpo = linhas.map(({prod, ans})=>{
+  // Só o primeiro lote entra agora; os seguintes chegam conforme a rolagem. Diagramar uma tabela
+  // de 1.600 linhas custava ~100 ms ao navegador a cada desenho, e isso cresce com o catálogo.
+  tabelaLinhas = linhas;
+  tabelaMostrando = Math.min(LOTE_TABELA, linhas.length);
+  const corpo = linhas.slice(0, tabelaMostrando).map(htmlDoProdutoNaTabela).join('');
+
+  wrap.innerHTML = `<table class="tabela-produtos">
+    <colgroup><col class="c-prod"><col class="c-custo"><col class="c-canal"><col class="c-num"><col class="c-num"><col class="c-marg"><col class="c-anun"><col class="c-acao"></colgroup>
+    <thead><tr>
+      <th>Produto</th><th class="num">Custo</th><th>Marketplace</th>
+      <th class="num">Preço</th><th class="num">Lucro</th><th class="num">Margem</th>
+      <th class="num">Anúncio</th><th></th>
+    </tr></thead>
+    <tbody>${corpo}</tbody>
+  </table>${rodapeDaTabela()}`;
+
+  pidEmDestaque = null;   // a tabela é nova: nenhum produto aceso
+  observarFimDaTabela();
+}
+
+// Tabela agrupada: as colunas do produto (SKU, nome, custo, ações) ocupam as linhas de todos os
+// anúncios dele com rowspan; cada anúncio é uma linha própria, clicável, com o preço do canal.
+function htmlDoProdutoNaTabela({prod, ans}){
     const tags = prod.costOverride ? ' <span class="tag">custo alterado</span>' : '';
     const n = Math.max(ans.length, 1);
     const colProduto = `<td class="cell-prod grp" rowspan="${n}" data-pid="${esc(prod.id)}" title="${esc(prod.sku)} -- ${esc(prod.name)}">
@@ -1550,46 +1593,88 @@ function renderTable(){
           <td class="num">${brl(ad.p20)}${ad.p40!==null ? `<span class="sub-val">antes ${brl(ad.p40)}</span>` : ''}</td>`; })();
       return `<tr class="${cls}" data-lid="${esc(lst.id)}" data-pid="${esc(prod.id)}">${i === 0 ? colProduto : ''}${canal}${numeros}${i === 0 ? colAcoes : ''}</tr>`;
     }).join('');
-  }).join('');
-
-  wrap.innerHTML = `<table class="tabela-produtos">
-    <thead><tr>
-      <th>Produto</th><th class="num">Custo</th><th>Marketplace</th>
-      <th class="num">Preço</th><th class="num">Lucro</th><th class="num">Margem</th>
-      <th class="num">Anúncio</th><th></th>
-    </tr></thead>
-    <tbody>${corpo}</tbody>
-  </table>`;
-
-  const selecionar = lid => {
-    state.selectedSkuId = lid;
-    // só lembra a seleção neste navegador; mandar a planilha inteira por causa de um clique
-    // fazia uma aba desatualizada sobrescrever o que outro dispositivo tinha salvo
-    store.set(STORAGE_KEY, JSON.stringify(state));
-    renderTable();
-    renderReceiptPanel();
-  };
-  wrap.querySelectorAll('tbody tr').forEach(tr=>{
-    tr.addEventListener('click', (e)=>{
-      if(e.target.closest('button')) return;
-      // clique nas colunas do produto seleciona o primeiro anúncio visível dele
-      const celulaDoProduto = e.target.closest('td.grp');
-      if(celulaDoProduto){
-        const primeiro = wrap.querySelector(`tr[data-pid="${CSS.escape(celulaDoProduto.dataset.pid || tr.dataset.pid)}"][data-lid]`);
-        if(primeiro) selecionar(primeiro.dataset.lid);
-        return;
-      }
-      if(tr.dataset.lid) selecionar(tr.dataset.lid);
-    });
-  });
-  // passar o mouse em qualquer anúncio acende o produto inteiro
-  wrap.querySelectorAll('tbody tr').forEach(tr=>{
-    tr.addEventListener('mouseenter', ()=> wrap.querySelectorAll(`tr[data-pid="${CSS.escape(tr.dataset.pid)}"]`).forEach(x=> x.classList.add('hover-grp')));
-    tr.addEventListener('mouseleave', ()=> wrap.querySelectorAll('tr.hover-grp').forEach(x=> x.classList.remove('hover-grp')));
-  });
-  wrap.querySelectorAll('[data-edit]').forEach(b=> b.onclick = () => openSkuForm(b.dataset.edit));
-  wrap.querySelectorAll('[data-del]').forEach(b=> b.onclick = () => deleteSku(b.dataset.del));
 }
+
+const LOTE_TABELA = 60;
+let tabelaLinhas = [];
+let tabelaMostrando = 0;
+let observadorTabela = null;
+function rodapeDaTabela(){
+  if(tabelaMostrando >= tabelaLinhas.length) return '';
+  return `<div class="tabela-mais" id="tabelaMais">Mostrando ${tabelaMostrando} de ${tabelaLinhas.length} produtos
+    <button class="btn small" id="btnMaisProdutos">Mostrar mais</button></div>`;
+}
+function mostrarMaisProdutos(){
+  const tbody = document.querySelector('#tableWrap tbody');
+  if(!tbody || tabelaMostrando >= tabelaLinhas.length) return;
+  const proximos = tabelaLinhas.slice(tabelaMostrando, tabelaMostrando + LOTE_TABELA);
+  tbody.insertAdjacentHTML('beforeend', proximos.map(htmlDoProdutoNaTabela).join(''));
+  tabelaMostrando += proximos.length;
+  const rodape = document.getElementById('tabelaMais');
+  if(rodape) rodape.outerHTML = rodapeDaTabela();
+  observarFimDaTabela();
+}
+// carrega o próximo lote um pouco antes de a rolagem chegar ao fim
+function observarFimDaTabela(){
+  if(observadorTabela) observadorTabela.disconnect();
+  const alvo = document.getElementById('tabelaMais');
+  if(!alvo || !('IntersectionObserver' in window)) return;
+  observadorTabela = new IntersectionObserver(ents=>{
+    if(ents.some(e=> e.isIntersecting)) mostrarMaisProdutos();
+  }, {rootMargin: '700px 0px'});
+  observadorTabela.observe(alvo);
+}
+
+// Trocar a seleção só move o destaque de uma linha para outra e redesenha o recibo. Antes, cada
+// clique reconstruía a tabela inteira -- numa loja com centenas de produtos, ~270 ms por clique.
+const salvarSelecaoDepois = debounce(()=> store.set(STORAGE_KEY, JSON.stringify(state)), 400);
+function selecionarAnuncio(lid){
+  if(!lid) return;
+  state.selectedSkuId = lid;
+  const wrap = document.getElementById('tableWrap');
+  wrap.querySelectorAll('tr.selected').forEach(tr=> tr.classList.remove('selected'));
+  const alvo = wrap.querySelector(`tr[data-lid="${CSS.escape(lid)}"]`);
+  if(alvo) alvo.classList.add('selected');
+  renderReceiptPanel();
+  // só lembra a seleção neste navegador, sem enviar à planilha: mandar tudo por causa de um
+  // clique fazia uma aba desatualizada sobrescrever o que outro dispositivo tinha salvo
+  salvarSelecaoDepois();
+}
+
+// Três ouvintes para a tabela inteira, ligados uma vez, em vez de três por linha a cada desenho
+// (eram milhares num catálogo grande, e todos eram refeitos a cada clique).
+let pidEmDestaque = null;
+(function ligarTabelaDeProdutos(){
+  const wrap = document.getElementById('tableWrap');
+  wrap.addEventListener('click', (e)=>{
+    if(e.target.closest('#btnMaisProdutos')){ mostrarMaisProdutos(); return; }
+    const editar = e.target.closest('[data-edit]');
+    if(editar){ openSkuForm(editar.dataset.edit); return; }
+    const excluir = e.target.closest('[data-del]');
+    if(excluir){ deleteSku(excluir.dataset.del); return; }
+    if(e.target.closest('button')) return;
+    const tr = e.target.closest('tbody tr');
+    if(!tr) return;
+    // clique nas colunas do produto seleciona o primeiro anúncio visível dele
+    if(e.target.closest('td.grp')){
+      const primeiro = wrap.querySelector(`tr[data-pid="${CSS.escape(tr.dataset.pid)}"][data-lid]`);
+      if(primeiro) selecionarAnuncio(primeiro.dataset.lid);
+      return;
+    }
+    if(tr.dataset.lid) selecionarAnuncio(tr.dataset.lid);
+  });
+  // passar o mouse em qualquer anúncio acende o produto inteiro; só mexe quando muda de produto
+  const apagar = ()=> wrap.querySelectorAll('tr.hover-grp').forEach(x=> x.classList.remove('hover-grp'));
+  wrap.addEventListener('mouseover', (e)=>{
+    const tr = e.target.closest('tbody tr');
+    const pid = tr ? tr.dataset.pid : null;
+    if(pid === pidEmDestaque) return;
+    apagar();
+    pidEmDestaque = pid;
+    if(pid) wrap.querySelectorAll(`tr[data-pid="${CSS.escape(pid)}"]`).forEach(x=> x.classList.add('hover-grp'));
+  });
+  wrap.addEventListener('mouseleave', ()=>{ pidEmDestaque = null; apagar(); });
+})();
 
 function renderReceiptPanel(){
   const outer = document.getElementById('receiptOuter');
@@ -1611,11 +1696,7 @@ function renderReceiptPanel(){
   const cab = `<h2>Recibo de precificação</h2><p class="mkt-name">${esc(prod.sku)} &middot; ${esc(prod.name)}<br>${esc(profile.label)} &middot; SKU no canal ${esc(lst.sku)}</p>${outros}`;
   const avisos = (profile.missing ? `<p class="warnline">O marketplace deste anúncio foi excluído. Os valores abaixo estão calculados sem nenhuma taxa &mdash; edite o produto e escolha um marketplace válido.</p>` : '')
                + (sku.costOverride ? `<p class="warnline">Custos da empresa alterados manualmente para este produto: mudar os padrões do sistema não afeta este item.</p>` : '');
-  const ligarCanais = ()=> outer.querySelectorAll('.rc-canal').forEach(b=> b.onclick = ()=>{
-    state.selectedSkuId = b.dataset.lid;
-    store.set(STORAGE_KEY, JSON.stringify(state));
-    renderTable(); renderReceiptPanel();
-  });
+  const ligarCanais = ()=> outer.querySelectorAll('.rc-canal').forEach(b=> b.onclick = ()=> selecionarAnuncio(b.dataset.lid));
 
   if(r.error){
     outer.innerHTML = `<div class="torn"></div><div class="receipt">${cab}${avisos}
@@ -1887,10 +1968,12 @@ function openSkuForm(id){
   ['f_cogs','f_name'].forEach(id=> document.getElementById(id).addEventListener('input', atualizaResultados));
   atualizaResultados();
 
-  form.addEventListener('keydown', (e)=>{
+  // onkeydown (e não addEventListener): o elemento do formulário é reaproveitado entre aberturas,
+  // e addEventListener empilhava um ouvinte novo a cada vez
+  form.onkeydown = (e)=>{
     if(e.key === 'Escape'){ e.preventDefault(); closeSkuForm(); }
     if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); document.getElementById('f_save').click(); }
-  });
+  };
   document.getElementById('f_sku').focus();
   document.getElementById('f_cancel').onclick = closeSkuForm;
 
@@ -2028,8 +2111,8 @@ function exportSpreadsheet(marketplaceIds){
   const header = ['SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda','Lucro Líquido',
     'Margem (sobre valor recebido)','Margem (sobre preço de venda)','Valor Anúncio (+20%)'];
   if(hasDualAny) header.push('Valor Anúncio (+40%)');
-  const numBR = v => round2(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-  const pctBR = v => round2(v).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1})+'%';
+  const numBR = v => FMT_NUM2.format(round2(v));
+  const pctBR = v => FMT_PCT.format(round2(v))+'%';
   const data = [header];
   rows.forEach(sku=>{
     const p = profileOf(sku.marketplaceId);
@@ -2061,7 +2144,7 @@ function exportEditSpreadsheet(marketplaceIds){
   const chosenSet = new Set(marketplaceIds);
   const rows = listagens().filter(s => chosenSet.has(s.marketplaceId));
   if(rows.length === 0){ toast('Nenhum produto cadastrado nos marketplaces selecionados.', 'err'); return; }
-  const numBR = v => round2(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const numBR = v => FMT_NUM2.format(round2(v));
   const header = ['SKU do Produto','SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda','Margem Desejada (%)',
     'Cupom','Frete Líquido','Taxa Fixa do Anúncio',
     'Custo Fixo (só se custo alterado)','Outros Custos (só se custo alterado)','Imposto % (só se custo alterado)','Marketing % (só se custo alterado)'];
@@ -2564,15 +2647,10 @@ function renderImportStep3(){
 }
 
 function renderProdutos(){
-  calcCache = new Map();          // vale só para este ciclo: métricas e tabela usam a mesma conta
-  try{
-    renderFilterOptions();
-    renderMetrics();
-    renderTable();
-    renderReceiptPanel();
-  } finally {
-    calcCache = null;             // nunca sobrevive ao ciclo, senão mostraria número velho
-  }
+  renderFilterOptions();
+  renderMetrics();
+  renderTable();
+  renderReceiptPanel();
 }
 
 // ---------- MARKETPLACES VIEW ----------
@@ -2610,7 +2688,7 @@ function tierEditorHtml(p){
       ${cel(i,'serviceCap',t.serviceCap)}
       ${cel(i,'transaction',t.transaction)}
       ${cel(i,'fixedFee',t.fixedFee)}
-      <td class="tcol-resumo">${total.toLocaleString('pt-BR',{maximumFractionDigits:2})}% + ${brl(Number(t.fixedFee)||0)}
+      <td class="tcol-resumo">${FMT_ATE2.format(total)}% + ${brl(Number(t.fixedFee)||0)}
         <span class="tier-note">${tierRangeLabel(i===0 ? 0 : (Number(t.min)||0), max) || 'todos os preços'}</span></td>
       <td class="tcol-x"><button class="btn small danger" data-deltier="${i}" ${tiers.length<=1?'disabled':''} title="Remover faixa">&times;</button></td>
     </tr>`;
@@ -2664,13 +2742,15 @@ function atualizaResumoDaLinha(inp, p, i){
   const t = p.tiers[i];
   const total = (Number(t.commission)||0)+(Number(t.service)||0)+(Number(t.transaction)||0);
   const max = p.tiers[i+1] ? Number(p.tiers[i+1].min)||0 : Infinity;
-  alvo.innerHTML = `${total.toLocaleString('pt-BR',{maximumFractionDigits:2})}% + ${brl(Number(t.fixedFee)||0)}
+  alvo.innerHTML = `${FMT_ATE2.format(total)}% + ${brl(Number(t.fixedFee)||0)}
     <span class="tier-note">${tierRangeLabel(i===0 ? 0 : (Number(t.min)||0), max) || 'todos os preços'}</span>`;
 }
 
 function renderMarketplaces(){
   const box = document.getElementById('mktCards');
-  const usageCount = id => listagens().filter(s=>s.marketplaceId===id).length;
+  const usos = new Map();
+  listagens().forEach(s=> usos.set(s.marketplaceId, (usos.get(s.marketplaceId)||0) + 1));
+  const usageCount = id => usos.get(id) || 0;
   box.innerHTML = state.profiles.map(p=>{
     const used = usageCount(p.id);
     return `<div class="card${p.tiered?' wide':''}" data-mktid="${esc(p.id)}">
