@@ -415,6 +415,47 @@
   .tier-sim tbody tr{cursor:default;}
   .tier-sim tbody tr:hover{background:transparent;}
 
+  /* ============ produto pai: tabela agrupada ============ */
+  .tabela-produtos tbody tr.grupo-ini td{border-top:1px solid var(--line);}
+  .tabela-produtos tbody tr.grupo-seq td{border-top:1px dashed var(--line-soft);}
+  .tabela-produtos tbody td{border-bottom:none;}
+  .tabela-produtos tbody td.grp{vertical-align:top;background:var(--surface);}
+  .tabela-produtos tbody tr.hover-grp td{background:var(--surface-2);}
+  .tabela-produtos tbody tr.selected td:not(.grp){background:var(--brand-dim);}
+  .tabela-produtos tbody tr.selected td.canal-cell{box-shadow:inset 3px 0 0 var(--brand);}
+  .tabela-produtos tbody tr.selected{box-shadow:none;background:transparent;}
+  .tabela-produtos tbody tr.hover-grp .row-actions{opacity:1;}
+  .canal-cell{white-space:nowrap;}
+  .tabela-produtos .muted{color:var(--ink-mute);}
+  /* seletor de canais no recibo */
+  .rc-canais{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 14px;}
+  .rc-canal{display:inline-flex;align-items:center;font-family:var(--ui);font-size:11px;font-weight:500;
+    background:rgba(0,0,0,.05);border:1px solid var(--paper-line);color:var(--paper-ink);
+    padding:4px 10px;border-radius:var(--r-pill);cursor:pointer;}
+  .rc-canal .mkt-dot{margin-right:6px;}
+  .rc-canal.on{background:var(--paper-ink);color:var(--paper);border-color:var(--paper-ink);}
+  /* ============ produto pai: canais no formulário ============ */
+  .canais{display:flex;flex-direction:column;gap:8px;}
+  .canal{border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2);transition:border-color var(--t);}
+  .canal.on{border-color:var(--line-strong);}
+  .canal-head{display:flex;align-items:center;gap:9px;padding:11px 14px;cursor:pointer;flex-wrap:wrap;}
+  .canal-head input{margin:0;accent-color:var(--brand);width:16px;height:16px;}
+  .canal-head .mkt-dot{margin:0;}
+  .canal-nome{font-weight:600;font-size:13px;}
+  .canal-res{margin-left:auto;font-size:12.5px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;}
+  .canal-res .muted{color:var(--ink-mute);font-size:11.5px;}
+  .canal-body{display:none;padding:0 14px 13px 39px;}
+  .canal.on .canal-body{display:block;}
+  .canal-grid{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;}
+  .cg{display:flex;flex-direction:column;gap:4px;}
+  .cg .cl{font-size:10.5px;color:var(--ink-mute);font-weight:500;}
+  .cg input[type=number]{width:104px;text-align:right;padding:7px 9px;}
+  .cg-sku input{width:190px;font-family:var(--mono);font-size:12px;padding:7px 9px;}
+  .mini-toggle{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:2px;}
+  .mini-toggle button{background:none;border:none;color:var(--ink-mute);font-family:inherit;font-size:12px;font-weight:500;
+    padding:6px 11px;border-radius:var(--r-xs);cursor:pointer;}
+  .mini-toggle button.on{background:var(--brand);color:var(--brand-ink);font-weight:600;}
+
   /* ============ avisos flutuantes ============ */
   #toasts{position:fixed;right:20px;bottom:20px;z-index:120;display:flex;flex-direction:column;gap:10px;
     max-width:min(400px,calc(100vw - 40px));pointer-events:none;}
@@ -548,7 +589,7 @@
 
       <div class="card">
         <h2>Código para colar no Apps Script</h2>
-        <div class="banner" style="margin:12px 0;"><svg class="bi"><use href="#i-warn"/></svg><div>Este é o código <strong>versão 3</strong>: guarda as faixas de preço e a taxa fixa por anúncio, trava gravações simultâneas e recusa que um dispositivo desatualizado apague o que outro salvou. O sistema não grava em planilhas com versão anterior. Se a sua planilha já estava conectada, cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. Sem isso, a taxa fixa por anúncio e as faixas de preço funcionam no navegador mas somem ao sincronizar.</div></div>
+        <div class="banner" style="margin:12px 0;"><svg class="bi"><use href="#i-warn"/></svg><div>Este é o código <strong>versão 4</strong>: guarda o produto pai com um anúncio por marketplace, as faixas de preço e a taxa fixa por anúncio, trava gravações simultâneas e recusa que um dispositivo desatualizado apague o que outro salvou. A partir desta versão, campos novos no sistema <strong>não exigem republicar</strong> o código. O sistema não grava em planilhas com versão anterior. Se a sua planilha já estava conectada, cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. Sem isso, a taxa fixa por anúncio e as faixas de preço funcionam no navegador mas somem ao sincronizar.</div></div>
         <div class="form-actions" style="margin:0 0 12px;"><button class="btn small" id="copyCodeBtn">Copiar código</button></div>
         <pre class="codeblock" id="gasCode"></pre>
       </div>
@@ -660,25 +701,159 @@ function defaultState(){
   return {
     profiles,
     padroes:{fixedCost:0, misc:0, taxPct:0, marketingPct:0, coupon:0, freightNet:0},
-    skus:[
-      {id:'demo1', sku:'DEMO-001-shopee', name:'Produto de exemplo (seu pedido real)', marketplaceId:'shopee',
-       cogs:0, fixedCost:0, misc:0, taxPct:0, marketingPct:0, coupon:0.88, freightNet:0, mktFixedFee:0,
-       mode:'price', price:43.89, marginTarget:20, costOverride:false}
+    products:[
+      {id:'p_demo1', sku:'DEMO-001', name:'Produto de exemplo (seu pedido real)',
+       cogs:0, costOverride:false, fixedCost:0, misc:0, taxPct:0, marketingPct:0,
+       listings:[
+         {id:'demo1', marketplaceId:'shopee', sku:'DEMO-001-shopee', mode:'price', price:43.89, marginTarget:20,
+          coupon:0.88, freightNet:0, mktFixedFee:0}
+       ]}
     ],
     selectedSkuId:'demo1'
   };
 }
 
-// Um estado que veio do localStorage, de um backup JSON ou de uma versão anterior do sistema
-// pode não ter campos que foram adicionados depois. Passar tudo pelos normalizadores garante
-// que número seja número e booleano seja booleano, em qualquer origem.
+// ---------- modelo: produto pai com um anúncio por marketplace ----------
+// O produto guarda UMA vez o que é dele (SKU base, nome, CMV, custos da empresa); cada anúncio
+// guarda o que muda de canal para canal (preço ou margem, cupom, frete, taxa fixa, SKU no canal).
+// Mudar o CMV no produto recalcula todos os marketplaces de uma vez.
+//
+// Tudo aqui é declaração de função de propósito: loadState() roda antes de uid, mktSlug e
+// profileOf existirem (são const mais abaixo), e chamar um deles daqui quebraria a leitura do
+// armazenamento -- o sistema voltaria em silêncio aos dados de fábrica.
+function novoId(){ return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function slugDoRotulo(label){
+  return String(label||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+}
+// SKU sem o sufixo do marketplace: "07-01-46-shopee" -> "07-01-46"
+function skuBase(sku, profiles){
+  const s = String(sku||'').trim();
+  for(const pr of (profiles||[])){
+    const suf = '-' + slugDoRotulo(pr.label);
+    if(suf.length > 1 && s.endsWith(suf)) return s.slice(0, -suf.length);
+  }
+  return s;
+}
+
+function normalizeListing(l){
+  ['price','marginTarget','coupon','freightNet','mktFixedFee'].forEach(k=> l[k] = Number(l[k])||0);
+  l.id = String(l.id || novoId());
+  l.marketplaceId = String(l.marketplaceId||'');
+  l.sku = String(l.sku||'');
+  l.mode = (l.mode === 'margin') ? 'margin' : 'price';
+  return l;
+}
+function normalizeProduct(p){
+  ['cogs','fixedCost','misc','taxPct','marketingPct'].forEach(k=> p[k] = Number(p[k])||0);
+  p.id = String(p.id || ('p_' + novoId()));
+  p.sku = String(p.sku||''); p.name = String(p.name||'');
+  p.costOverride = toBool(p.costOverride);
+  if(!Array.isArray(p.listings)) p.listings = [];
+  p.listings.forEach(normalizeListing);
+  return p;
+}
+
+// Visão plana de um anúncio: exatamente o formato do cadastro antigo. É o que o calcSku, as
+// exportações e a planilha do Google entendem -- por isso o cálculo não precisou mudar.
+function visaoDoAnuncio(prod, lst){
+  return {
+    id: lst.id, productId: prod.id, productSku: prod.sku,
+    sku: lst.sku, name: prod.name, marketplaceId: lst.marketplaceId,
+    cogs: prod.cogs, costOverride: prod.costOverride,
+    fixedCost: prod.fixedCost, misc: prod.misc, taxPct: prod.taxPct, marketingPct: prod.marketingPct,
+    coupon: lst.coupon, freightNet: lst.freightNet, mktFixedFee: lst.mktFixedFee,
+    mode: lst.mode, price: lst.price, marginTarget: lst.marginTarget
+  };
+}
+function listagens(){
+  const out = [];
+  state.products.forEach(prod=> prod.listings.forEach(l=> out.push(visaoDoAnuncio(prod, l))));
+  return out;
+}
+function anuncioPorId(id){
+  for(const prod of state.products){
+    const lst = prod.listings.find(l=> l.id === id);
+    if(lst) return {prod, lst};
+  }
+  return null;
+}
+function produtoPorId(id){ return state.products.find(p=> p.id === id) || null; }
+
+// Linhas planas (formato antigo, backup antigo ou planilha do Google) -> produtos com anúncios.
+// Só junta o que é o mesmo produto de verdade: mesmo productId ou, sem ele, mesmo SKU base E os
+// mesmos custos. Um produto com CMV diferente entre marketplaces fica separado -- juntar obrigaria
+// a escolher um dos números sem avisar, e isso mudaria preço e margem.
+function agruparEmProdutos(rows, profiles){
+  const produtos = [];
+  const porChave = new Map();
+  const basesVistas = new Map();   // base -> quantos produtos diferentes nasceram com ela
+  let legado = 0;
+  (rows||[]).forEach(r0=>{
+    const r = Object.assign({}, r0);
+    normalizeSku(r);
+    const temProductId = !!String(r.productId||'').trim();
+    if(!temProductId) legado++;
+    const base = String(r.productSku||'').trim() || skuBase(r.sku, profiles);
+    const custos = r.costOverride ? [r.cogs, r.fixedCost, r.misc, r.taxPct, r.marketingPct].join('|') : String(r.cogs);
+    const chave = temProductId ? 'id:' + r.productId : 'sku:' + base + '#' + r.costOverride + '#' + custos;
+    const mid = String(r.marketplaceId||'');
+    let prod = porChave.get(chave);
+    // o mesmo marketplace duas vezes não cabe num produto só: são produtos diferentes
+    if(prod && mid && prod.listings.some(l=> l.marketplaceId === mid)) prod = null;
+    if(!prod){
+      prod = normalizeProduct({
+        id: temProductId ? String(r.productId) : ('p_' + (r.id || novoId())),
+        sku: base, name: r.name, cogs: r.cogs, costOverride: r.costOverride,
+        fixedCost: r.fixedCost, misc: r.misc, taxPct: r.taxPct, marketingPct: r.marketingPct, listings: []
+      });
+      if(!porChave.has(chave)) porChave.set(chave, prod);
+      produtos.push(prod);
+      if(!temProductId) basesVistas.set(base, (basesVistas.get(base)||0) + 1);
+    }
+    // linha sem marketplace = produto guardado sem nenhum anúncio
+    if(mid) prod.listings.push(normalizeListing({
+      id: r.id, marketplaceId: mid, sku: r.sku, mode: r.mode, price: r.price, marginTarget: r.marginTarget,
+      coupon: r.coupon, freightNet: r.freightNet, mktFixedFee: r.mktFixedFee
+    }));
+  });
+  let separados = 0;
+  basesVistas.forEach(n=>{ if(n > 1) separados++; });
+  return {produtos, legado, separados};
+}
+
+// Produtos -> linhas planas, uma por anúncio, para a planilha e para o backup legível.
+function achatarProdutos(products){
+  const rows = [];
+  products.forEach(prod=>{
+    if(prod.listings.length === 0){
+      rows.push(visaoDoAnuncio(prod, {id:'p0_' + prod.id, marketplaceId:'', sku:prod.sku, mode:'price',
+        price:0, marginTarget:0, coupon:0, freightNet:0, mktFixedFee:0}));
+    } else prod.listings.forEach(l=> rows.push(visaoDoAnuncio(prod, l)));
+  });
+  return rows;
+}
+
+// Um estado que veio do localStorage, de um backup JSON, da planilha ou de uma versão anterior
+// do sistema pode não ter campos que foram adicionados depois -- ou nem estar no formato de
+// produtos. Tudo passa por aqui.
 function normalizeState(s){
-  if(!s || !Array.isArray(s.profiles) || !Array.isArray(s.skus)) return null;
+  if(!s || !Array.isArray(s.profiles)) return null;
   s.profiles.forEach(normalizeProfile);
-  s.skus.forEach(normalizeSku);
-  s.padroes = normalizePadroes(s.padroes || {});
   if(s.profiles.length === 0) s.profiles = defaultProfiles();
-  if(!s.skus.some(k => k.id === s.selectedSkuId)) s.selectedSkuId = s.skus[0] ? s.skus[0].id : null;
+  s.padroes = normalizePadroes(s.padroes || {});
+  if(!Array.isArray(s.products)){
+    if(!Array.isArray(s.skus)) return null;
+    const g = agruparEmProdutos(s.skus, s.profiles);
+    s.products = g.produtos;
+    if(g.legado > 0 && (g.legado !== g.produtos.length || g.separados > 0)){
+      s._migracao = {cadastros: s.skus.length, produtos: g.produtos.length, separados: g.separados};
+    }
+  }
+  delete s.skus;
+  s.products.forEach(normalizeProduct);
+  const ids = [];
+  s.products.forEach(p=> p.listings.forEach(l=> ids.push(l.id)));
+  if(ids.indexOf(s.selectedSkuId) === -1) s.selectedSkuId = ids[0] || null;
   return s;
 }
 
@@ -692,6 +867,28 @@ function loadState(){
     console.warn('Não foi possível ler o armazenamento local, usando dados padrão.', e);
     return defaultState();
   }
+}
+
+// Conta uma vez só como os cadastros antigos foram agrupados, e grava o formato novo.
+function avisaMigracao(){
+  const m = state._migracao;
+  if(!m) return;
+  delete state._migracao;
+  store.set(STORAGE_KEY, JSON.stringify(state));
+  toast(`${m.cadastros} cadastros por marketplace viraram ${m.produtos} produto(s), cada um com seus anúncios.`
+    + (m.separados ? ` ${m.separados} SKU(s) ficaram em mais de um produto porque o custo era diferente entre marketplaces -- confira e junte à mão se for o mesmo item.` : ''),
+    m.separados ? 'warn' : 'ok', 'Catálogo reorganizado');
+}
+
+// O que vai para a planilha: a lista de produtos achatada em uma linha por anúncio, com o
+// productId em cada linha para a leitura remontar os produtos exatamente como estavam.
+const CAMPOS_TEXTO_PLANILHA = {
+  Marketplaces: ['id','label','tiers'],
+  Produtos: ['id','productId','productSku','sku','marketplaceId'],
+  Padroes: []
+};
+function estadoParaPlanilha(){
+  return {profiles: state.profiles, skus: achatarProdutos(state.products), padroes: state.padroes};
 }
 
 // Navegador em aba anônima ou com dados de site bloqueados lança SecurityError já na LEITURA
@@ -715,8 +912,8 @@ let lastSyncError = '';
 let revPlanilha = null;
 let versaoScript = null;
 let scriptDesatualizado = false;
-const GAS_VERSAO_MINIMA = 3;
-const MSG_SCRIPT_ANTIGO = 'O código do Apps Script na sua planilha está desatualizado: ele não guarda as faixas de preço nem a taxa fixa por anúncio, e as descartaria sem avisar. Para não apagar dados, nada foi enviado. Abra a aba Sincronização, copie o código novo, cole no Apps Script e publique uma NOVA VERSÃO da implantação existente (Implantar → Gerenciar implantações → lápis → Nova versão).';
+const GAS_VERSAO_MINIMA = 4;
+const MSG_SCRIPT_ANTIGO = 'O código do Apps Script na sua planilha está desatualizado: ele não guarda o agrupamento de produtos (produto pai com um anúncio por marketplace), e o descartaria sem avisar. Para não apagar dados, nada foi enviado. Abra a aba Sincronização, copie o código novo, cole no Apps Script e publique uma NOVA VERSÃO da implantação existente (Implantar → Gerenciar implantações → lápis → Nova versão).';
 
 function saveState(){
   store.set(STORAGE_KEY, JSON.stringify(state));
@@ -749,7 +946,8 @@ async function pushToSheets(){
     const res = await fetch(gasUrl, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({action:'saveAll', baseRev: revPlanilha, state})
+      body: JSON.stringify({action:'saveAll', baseRev: revPlanilha, clientVersion: GAS_VERSAO_MINIMA,
+        textFields: CAMPOS_TEXTO_PLANILHA, state: estadoParaPlanilha()})
     });
     const data = await res.json();
     if(data.conflict){ conflito = true; }
@@ -804,7 +1002,7 @@ async function pullFromSheets(showAlerts){
     // Planilha vazia (primeira conexão) -- envia os dados locais para lá em vez de apagar tudo.
     // A checagem cobre produtos também: uma planilha com marketplaces mas sem nenhum produto
     // apagaria silenciosamente o catálogo local no primeiro pull automático da abertura.
-    const planilhaVazia = data.profiles.length === 0 || (data.skus.length === 0 && state.skus.length > 0);
+    const planilhaVazia = data.profiles.length === 0 || (data.skus.length === 0 && state.products.length > 0);
     if(planilhaVazia){
       await pushToSheets();
       if(showAlerts) toast('A planilha estava vazia -- enviei os dados deste navegador para lá.', 'warn', 'Sincronizado');
@@ -819,7 +1017,8 @@ async function pullFromSheets(showAlerts){
       renderProdutos();
       if(document.getElementById('view-marketplaces').classList.contains('active')) renderMarketplaces();
       if(document.getElementById('view-padroes').classList.contains('active')) renderPadroes();
-      if(showAlerts) toast(`${state.skus.length} produto(s) e ${state.profiles.length} marketplace(s) carregados da planilha.`, 'ok', 'Sincronizado');
+      avisaMigracao();
+      if(showAlerts) toast(`${state.products.length} produto(s), ${listagens().length} anúncio(s) e ${state.profiles.length} marketplace(s) carregados da planilha.`, 'ok', 'Sincronizado');
     }
     lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
   }catch(err){
@@ -1222,7 +1421,7 @@ document.addEventListener('click', (e)=>{
 });
 
 function atualizarContadoresDoMenu(){
-  document.getElementById('navCountSkus').textContent = state.skus.length;
+  document.getElementById('navCountSkus').textContent = state.products.length;
   document.getElementById('navCountMkt').textContent = state.profiles.length;
 }
 
@@ -1244,48 +1443,60 @@ function calcDoSku(sku){
 // os botões das telas de Marketplaces, Custos e Sincronização.
 const filtros = {q:'', mkt:'', ordem:'margin_asc'};
 
-function filteredSortedSkus(){
+// Uma linha por produto, com os anúncios dele dentro. Com um marketplace no filtro, cada produto
+// mostra só o preço daquele canal -- e some da lista quem não é vendido nele.
+function produtosFiltrados(){
   const q = filtros.q.toLowerCase();
   const mktFilter = filtros.mkt;
   const sortBy = filtros.ordem;
-  let rows = state.skus.map(sku=>({sku, r: calcDoSku(sku)}));
-  if(q) rows = rows.filter(x => x.sku.sku.toLowerCase().includes(q) || x.sku.name.toLowerCase().includes(q));
-  if(mktFilter === '__missing__') rows = rows.filter(x => profileOf(x.sku.marketplaceId).missing);
-  else if(mktFilter) rows = rows.filter(x => x.sku.marketplaceId === mktFilter);
-  rows.sort((a,b)=>{
-    const ma = a.r.error ? -Infinity : a.r.marginPct, mb = b.r.error ? -Infinity : b.r.marginPct;
-    const pa = a.r.error ? -Infinity : a.r.profit, pb = b.r.error ? -Infinity : b.r.profit;
-    if(sortBy==='margin_asc') return ma-mb;
-    if(sortBy==='margin_desc') return mb-ma;
-    if(sortBy==='profit_desc') return pb-pa;
-    return a.sku.name.localeCompare(b.sku.name);
+  const ordemMkt = id => { const i = state.profiles.findIndex(p=> p.id === id); return i === -1 ? 999 : i; };
+  let linhas = state.products.map(prod=>{
+    let ans = prod.listings
+      .slice().sort((a,b)=> ordemMkt(a.marketplaceId) - ordemMkt(b.marketplaceId))
+      .map(lst=>{ const v = visaoDoAnuncio(prod, lst); return {lst, v, r: calcDoSku(v)}; });
+    if(mktFilter === '__missing__') ans = ans.filter(a=> profileOf(a.lst.marketplaceId).missing);
+    else if(mktFilter) ans = ans.filter(a=> a.lst.marketplaceId === mktFilter);
+    return {prod, ans};
   });
-  return rows;
+  if(mktFilter) linhas = linhas.filter(x=> x.ans.length);
+  if(q) linhas = linhas.filter(x=> x.prod.sku.toLowerCase().includes(q) || x.prod.name.toLowerCase().includes(q)
+    || x.prod.listings.some(l=> l.sku.toLowerCase().includes(q)));
+  // ordenar produto por margem usa o pior anúncio (menor primeiro) ou o melhor (maior primeiro)
+  const margens = x => x.ans.length ? x.ans.map(a=> a.r.error ? -Infinity : a.r.marginPct) : [-Infinity];
+  const lucros  = x => x.ans.length ? x.ans.map(a=> a.r.error ? -Infinity : a.r.profit) : [-Infinity];
+  linhas.sort((a,b)=>{
+    if(sortBy==='margin_asc') return Math.min(...margens(a)) - Math.min(...margens(b));
+    if(sortBy==='margin_desc') return Math.max(...margens(b)) - Math.max(...margens(a));
+    if(sortBy==='profit_desc') return Math.max(...lucros(b)) - Math.max(...lucros(a));
+    return a.prod.name.localeCompare(b.prod.name);
+  });
+  return linhas;
 }
 
 function renderMetrics(){
-  const rows = state.skus.map(calcDoSku);
+  const rows = listagens().map(calcDoSku);
   const valid = rows.filter(r=>!r.error);
   const avgMargin = valid.length ? valid.reduce((a,r)=>a+r.marginPct,0)/valid.length : 0;
   const losing = rows.filter(r=>r.error || r.marginPct<0).length;
   const totalProfit = valid.reduce((a,r)=>a+r.profit,0);
-  const orphans = state.skus.filter(s=>profileOf(s.marketplaceId).missing).length;
-  const overrides = state.skus.filter(s=>s.costOverride).length;
+  const orphans = listagens().filter(s=>profileOf(s.marketplaceId).missing).length;
+  const overrides = state.products.filter(s=>s.costOverride).length;
+  const canais = new Set(listagens().map(s=> s.marketplaceId)).size;
   document.getElementById('metrics').innerHTML = `
-    <div class="metric is-accent"><div class="k">Produtos cadastrados</div><div class="v">${state.skus.length}</div>
-      <div class="f">${overrides ? overrides+' com custo alterado' : 'todos usando os padrões da empresa'}</div></div>
-    <div class="metric ${avgMargin>=0?'is-good':'is-bad'}"><div class="k">Margem média</div><div class="v">${pct(avgMargin)}</div>
-      <div class="f">sobre o valor recebido</div></div>
-    <div class="metric ${totalProfit>=0?'is-good':'is-bad'}"><div class="k">Lucro somado por unidade</div><div class="v">${brl(totalProfit)}</div>
-      <div class="f">uma venda de cada produto</div></div>
-    <div class="metric ${losing?'is-bad':'is-good'}"><div class="k">Produtos no prejuízo</div><div class="v" style="color:${losing?'var(--bad)':'var(--good)'}">${losing}</div>
+    <div class="metric"><div class="k">Produtos</div><div class="v">${state.products.length}</div>
+      <div class="f">${rows.length} anúncio(s) em ${canais} marketplace(s)${overrides ? ' &middot; '+overrides+' com custo alterado' : ''}</div></div>
+    <div class="metric ${avgMargin>=0?'ok':'bad'}"><div class="k">Margem média</div><div class="v">${pct(avgMargin)}</div>
+      <div class="f">sobre o valor recebido, média dos anúncios</div></div>
+    <div class="metric ${totalProfit>=0?'ok':'bad'}"><div class="k">Lucro somado por unidade</div><div class="v">${brl(totalProfit)}</div>
+      <div class="f">uma venda de cada anúncio</div></div>
+    <div class="metric ${losing?'bad':'ok'}"><div class="k">Anúncios no prejuízo</div><div class="v">${losing}</div>
       <div class="f">${orphans ? orphans+' sem marketplace válido' : (losing?'revise preço ou custo':'nenhum no vermelho')}</div></div>
   `;
 }
 
 function renderFilterOptions(){
   const sel = document.getElementById('filterMkt');
-  const orfaos = state.skus.some(s=>profileOf(s.marketplaceId).missing);
+  const orfaos = listagens().some(s=>profileOf(s.marketplaceId).missing);
   const validos = [''].concat(state.profiles.map(p=>p.id), orfaos ? ['__missing__'] : []);
   // se o marketplace filtrado foi excluído, volta para todos em vez de deixar a tabela
   // vazia sem explicação
@@ -1300,62 +1511,81 @@ function renderFilterOptions(){
 }
 
 function renderTable(){
-  const rows = filteredSortedSkus();
+  const linhas = produtosFiltrados();
   const wrap = document.getElementById('tableWrap');
-  if(state.skus.length===0){
-    wrap.innerHTML = `<div class="empty"><div class="mark">&#9634;</div><div class="big">Nenhum produto cadastrado</div>
-      Comece por "+ Novo produto" para um item, ou por "Planilhas &rarr; Importar planilha" para trazer o catálogo inteiro de uma vez.</div>`;
+  if(state.products.length===0){
+    wrap.innerHTML = `<div class="empty"><div class="big">Nenhum produto cadastrado</div>
+      Comece por "Novo produto" para um item, ou por "Planilhas &rarr; Importar planilha" para trazer o catálogo inteiro de uma vez.</div>`;
     return;
   }
-  if(rows.length===0){
-    wrap.innerHTML = `<div class="empty"><div class="mark">&#9906;</div><div class="big">Nenhum produto com esse filtro</div>
+  if(linhas.length===0){
+    wrap.innerHTML = `<div class="empty"><div class="big">Nenhum produto com esse filtro</div>
       Ajuste a busca ou o marketplace selecionado na barra acima.</div>`;
     return;
   }
-  const extraCols = 4;   // preço, lucro, margem e anúncio ficam entre o marketplace e as ações
-  wrap.innerHTML = `<table>
-    <thead><tr>
-      <th>Produto</th><th>Marketplace</th>
-      <th class="num">Preço</th><th class="num">Lucro</th><th class="num">Margem</th>
-      <th class="num">Anúncio</th><th></th>
-    </tr></thead>
-    <tbody>
-      ${rows.map(({sku,r})=>{
-        const p = profileOf(sku.marketplaceId);
-        const selected = sku.id===state.selectedSkuId ? 'selected' : '';
-        const tags = (sku.costOverride ? ' <span class="tag">custo alterado</span>' : '')
-                   + (p.missing ? ' <span class="tag tag-danger">marketplace removido</span>' : '');
-        const acoes = `<td class="row-actions"><button class="iconbtn" data-edit="${esc(sku.id)}" title="Editar produto"><svg class="ic"><use href="#i-pencil"/></svg></button><button class="iconbtn danger" data-del="${esc(sku.id)}" title="Excluir produto"><svg class="ic"><use href="#i-trash"/></svg></button></td>`;
-        const cabeca = `<td class="cell-prod" title="${esc(sku.sku)} -- ${esc(sku.name)}">
-              <span class="sku">${esc(sku.sku)}</span>${tags}
-              <span class="nm">${esc(sku.name)}</span></td>
-            <td><span class="mkt-dot" style="background:${esc(p.color)}"></span>${esc(p.label)}</td>`;
-        if(r.error){
-          return `<tr data-id="${esc(sku.id)}" class="${selected}">${cabeca}
-            <td class="num" colspan="${3+extraCols}" style="color:var(--bad)">Margem desejada inviável -- taxas somadas excedem 100%</td>
-            ${acoes}</tr>`;
-        }
-        const ad = adPrices(r.price, p);
-        return `<tr data-id="${esc(sku.id)}" class="${selected}">${cabeca}
+  // Tabela agrupada: as colunas do produto (SKU, nome, custo, ações) ocupam as linhas de todos os
+  // anúncios dele com rowspan; cada anúncio é uma linha própria, clicável, com o preço do canal.
+  const corpo = linhas.map(({prod, ans})=>{
+    const tags = prod.costOverride ? ' <span class="tag">custo alterado</span>' : '';
+    const n = Math.max(ans.length, 1);
+    const colProduto = `<td class="cell-prod grp" rowspan="${n}" data-pid="${esc(prod.id)}" title="${esc(prod.sku)} -- ${esc(prod.name)}">
+        <span class="sku">${esc(prod.sku)}</span>${tags}
+        <span class="nm">${esc(prod.name)}</span></td>
+      <td class="num grp" rowspan="${n}" data-pid="${esc(prod.id)}">${brl(prod.cogs)}</td>`;
+    const colAcoes = `<td class="row-actions grp" rowspan="${n}"><button class="iconbtn" data-edit="${esc(prod.id)}" title="Editar produto e preços"><svg class="ic"><use href="#i-pencil"/></svg></button><button class="iconbtn danger" data-del="${esc(prod.id)}" title="Excluir produto"><svg class="ic"><use href="#i-trash"/></svg></button></td>`;
+    if(ans.length === 0){
+      return `<tr class="grupo-ini" data-pid="${esc(prod.id)}">${colProduto}<td colspan="5" class="muted">Sem anúncio em nenhum marketplace</td>${colAcoes}</tr>`;
+    }
+    return ans.map(({lst, v, r}, i)=>{
+      const p = profileOf(lst.marketplaceId);
+      const sel = lst.id === state.selectedSkuId ? ' selected' : '';
+      const cls = (i === 0 ? 'grupo-ini' : 'grupo-seq') + sel;
+      const canal = `<td class="canal-cell"><span class="mkt-dot" style="background:${esc(p.color)}"></span>${esc(p.label)}${p.missing ? ' <span class="tag tag-danger">removido</span>' : ''}</td>`;
+      const numeros = r.error
+        ? `<td class="num" colspan="4" style="color:var(--bad)">Margem inviável com essas taxas</td>`
+        : (()=>{ const ad = adPrices(r.price, p); return `
           <td class="num">${brl(r.price)}</td>
           <td class="num ${r.profit>=0?'pos':'neg'}">${brl(r.profit)}</td>
           <td class="num ${r.marginPct>=0?'pos':'neg'}">${pct(r.marginPct)}</td>
-          <td class="num">${brl(ad.p20)}${ad.p40!==null ? `<span class="sub-val">antes ${brl(ad.p40)}</span>` : ''}</td>
-          ${acoes}</tr>`;
-      }).join('')}
-    </tbody>
+          <td class="num">${brl(ad.p20)}${ad.p40!==null ? `<span class="sub-val">antes ${brl(ad.p40)}</span>` : ''}</td>`; })();
+      return `<tr class="${cls}" data-lid="${esc(lst.id)}" data-pid="${esc(prod.id)}">${i === 0 ? colProduto : ''}${canal}${numeros}${i === 0 ? colAcoes : ''}</tr>`;
+    }).join('');
+  }).join('');
+
+  wrap.innerHTML = `<table class="tabela-produtos">
+    <thead><tr>
+      <th>Produto</th><th class="num">Custo</th><th>Marketplace</th>
+      <th class="num">Preço</th><th class="num">Lucro</th><th class="num">Margem</th>
+      <th class="num">Anúncio</th><th></th>
+    </tr></thead>
+    <tbody>${corpo}</tbody>
   </table>`;
 
+  const selecionar = lid => {
+    state.selectedSkuId = lid;
+    // só lembra a seleção neste navegador; mandar a planilha inteira por causa de um clique
+    // fazia uma aba desatualizada sobrescrever o que outro dispositivo tinha salvo
+    store.set(STORAGE_KEY, JSON.stringify(state));
+    renderTable();
+    renderReceiptPanel();
+  };
   wrap.querySelectorAll('tbody tr').forEach(tr=>{
     tr.addEventListener('click', (e)=>{
       if(e.target.closest('button')) return;
-      state.selectedSkuId = tr.dataset.id;
-      // só lembra a seleção neste navegador; mandar a planilha inteira por causa de um clique
-      // fazia uma aba desatualizada sobrescrever o que outro dispositivo tinha salvo
-      store.set(STORAGE_KEY, JSON.stringify(state));
-      renderTable();
-      renderReceiptPanel();
+      // clique nas colunas do produto seleciona o primeiro anúncio visível dele
+      const celulaDoProduto = e.target.closest('td.grp');
+      if(celulaDoProduto){
+        const primeiro = wrap.querySelector(`tr[data-pid="${CSS.escape(celulaDoProduto.dataset.pid || tr.dataset.pid)}"][data-lid]`);
+        if(primeiro) selecionar(primeiro.dataset.lid);
+        return;
+      }
+      if(tr.dataset.lid) selecionar(tr.dataset.lid);
     });
+  });
+  // passar o mouse em qualquer anúncio acende o produto inteiro
+  wrap.querySelectorAll('tbody tr').forEach(tr=>{
+    tr.addEventListener('mouseenter', ()=> wrap.querySelectorAll(`tr[data-pid="${CSS.escape(tr.dataset.pid)}"]`).forEach(x=> x.classList.add('hover-grp')));
+    tr.addEventListener('mouseleave', ()=> wrap.querySelectorAll('tr.hover-grp').forEach(x=> x.classList.remove('hover-grp')));
   });
   wrap.querySelectorAll('[data-edit]').forEach(b=> b.onclick = () => openSkuForm(b.dataset.edit));
   wrap.querySelectorAll('[data-del]').forEach(b=> b.onclick = () => deleteSku(b.dataset.del));
@@ -1363,22 +1593,35 @@ function renderTable(){
 
 function renderReceiptPanel(){
   const outer = document.getElementById('receiptOuter');
-  const sku = state.skus.find(s=>s.id===state.selectedSkuId);
-  if(!sku){
-    outer.innerHTML = `<div class="receipt-empty">Clique em um produto da tabela para ver o recibo completo &mdash; taxa por taxa, custo por custo, até o lucro final.</div>`;
+  const achado = anuncioPorId(state.selectedSkuId);
+  if(!achado){
+    outer.innerHTML = `<div class="receipt-empty">Clique em um anúncio da tabela para ver o recibo completo &mdash; taxa por taxa, custo por custo, até o lucro final.</div>`;
     return;
   }
+  const {prod, lst} = achado;
+  const sku = visaoDoAnuncio(prod, lst);
   const profile = profileOf(sku.marketplaceId);
   const r = calcDoSku(sku);
   const line = (lbl, val, cls='') => `<div class="rline ${cls}"><span class="lbl">${lbl}</span><span class="val">${val<0?'-':''}${brl(Math.abs(val))}</span></div>`;
-  const cab = `<h2>Recibo de precificação</h2><p class="mkt-name">${esc(sku.sku)} &middot; ${esc(sku.name)} &middot; ${esc(profile.label)}</p>`;
-  const avisos = (profile.missing ? `<p class="warnline">O marketplace deste produto foi excluído. Os valores abaixo estão calculados sem nenhuma taxa &mdash; edite o produto e escolha um marketplace válido.</p>` : '')
+  // atalho para os outros marketplaces do mesmo produto, sem voltar à tabela
+  const outros = prod.listings.length > 1 ? `<div class="rc-canais">${prod.listings.map(l=>{
+      const pp = profileOf(l.marketplaceId);
+      return `<button class="rc-canal${l.id===lst.id?' on':''}" data-lid="${esc(l.id)}"><span class="mkt-dot" style="background:${esc(pp.color)}"></span>${esc(pp.label)}</button>`;
+    }).join('')}</div>` : '';
+  const cab = `<h2>Recibo de precificação</h2><p class="mkt-name">${esc(prod.sku)} &middot; ${esc(prod.name)}<br>${esc(profile.label)} &middot; SKU no canal ${esc(lst.sku)}</p>${outros}`;
+  const avisos = (profile.missing ? `<p class="warnline">O marketplace deste anúncio foi excluído. Os valores abaixo estão calculados sem nenhuma taxa &mdash; edite o produto e escolha um marketplace válido.</p>` : '')
                + (sku.costOverride ? `<p class="warnline">Custos da empresa alterados manualmente para este produto: mudar os padrões do sistema não afeta este item.</p>` : '');
+  const ligarCanais = ()=> outer.querySelectorAll('.rc-canal').forEach(b=> b.onclick = ()=>{
+    state.selectedSkuId = b.dataset.lid;
+    store.set(STORAGE_KEY, JSON.stringify(state));
+    renderTable(); renderReceiptPanel();
+  });
 
   if(r.error){
     outer.innerHTML = `<div class="torn"></div><div class="receipt">${cab}${avisos}
       <div class="error-box">Não é possível atingir uma margem de ${pct(r.m*100)} sobre o valor recebido com essas taxas -- ou a conta fica negativa, ou não sobra nada de verdade na sua mão depois do marketplace. Taxas do marketplace: ${pct(r.mktPct*100)}. Imposto + marketing: ${pct((r.tax+r.mk)*100)}. Reduza a margem desejada ou revise as taxas.</div>
     </div><div class="torn bottom"></div>`;
+    ligarCanais();
     return;
   }
 
@@ -1416,15 +1659,16 @@ function renderReceiptPanel(){
       ${profile.dualAdPrice ? `<div class="rline"><span class="lbl">Valor antes do anúncio (+40%)</span><span class="val">${brl(ad.p40)}</span></div>` : ''}
     </div>
     <div class="form-actions" style="margin-top:16px;">
-      <button class="btn small" id="rc_edit">Editar este produto</button>
+      <button class="btn small" id="rc_edit">Editar produto e preços</button>
       <button class="btn small" id="rc_copy">Copiar resumo</button>
     </div>
   </div><div class="torn bottom"></div>`;
 
-  document.getElementById('rc_edit').onclick = ()=> openSkuForm(sku.id);
+  ligarCanais();
+  document.getElementById('rc_edit').onclick = ()=> openSkuForm(prod.id);
   document.getElementById('rc_copy').onclick = ()=>{
     const txt = [
-      `${sku.sku} -- ${sku.name} (${profile.label})`,
+      `${lst.sku} -- ${prod.name} (${profile.label})`,
       `Preço de venda: ${brl(r.price)}`,
       `Valor recebido: ${brl(r.netMarketplace)}`,
       `Lucro líquido: ${brl(r.profit)}`,
@@ -1437,251 +1681,254 @@ function renderReceiptPanel(){
   };
 }
 
+// Formulário do produto pai. Em cima, o que é do produto (SKU base, nome, CMV, custos da
+// empresa); embaixo, um bloco por marketplace com o preço ou a margem daquele canal. Mudar o CMV
+// aqui recalcula na hora todos os marketplaces do produto.
 function openSkuForm(id){
   closeImportWizard();
   closeExportWizard();
-  editingSkuId = id || null;
-  const sku = editingSkuId ? state.skus.find(s=>s.id===editingSkuId) : {
-    id:null, sku:'', name:'', marketplaceId: state.profiles[0].id,
-    cogs:0, fixedCost: state.padroes.fixedCost, misc: state.padroes.misc,
-    taxPct: state.padroes.taxPct, marketingPct: state.padroes.marketingPct,
-    coupon: state.padroes.coupon, freightNet: state.padroes.freightNet, mktFixedFee:0,
-    mode:'price', price:0, marginTarget:20, costOverride:false
-  };
-  const marketplaceOriginal = sku.marketplaceId;
-  let costUnlocked = !!sku.costOverride;
-  let fmode = sku.mode;
+  const existente = id ? produtoPorId(id) : null;
+  editingSkuId = existente ? existente.id : null;
+
+  // rascunho: nada é gravado até clicar em Salvar
+  const prod = existente
+    ? JSON.parse(JSON.stringify(existente))
+    : {id:null, sku:'', name:'', cogs:0, costOverride:false,
+       fixedCost: state.padroes.fixedCost, misc: state.padroes.misc,
+       taxPct: state.padroes.taxPct, marketingPct: state.padroes.marketingPct, listings:[]};
+  let costUnlocked = !!prod.costOverride;
+  const skuBaseOriginal = prod.sku;
+
+  const canais = {};
+  state.profiles.forEach(p=>{
+    const lst = prod.listings.find(l=> l.marketplaceId === p.id);
+    canais[p.id] = lst
+      ? {ativo:true, id:lst.id, sku:lst.sku, skuCustom: lst.sku !== applyMktSuffix(prod.sku, p.id),
+         mode:lst.mode, price:lst.price, marginTarget:lst.marginTarget,
+         coupon:lst.coupon, freightNet:lst.freightNet, mktFixedFee:lst.mktFixedFee, tocado:true}
+      : {ativo:false, id:null, sku:'', skuCustom:false, mode:'price', price:0, marginTarget:20,
+         coupon: state.padroes.coupon, freightNet: state.padroes.freightNet, mktFixedFee:0, tocado:false};
+  });
+  // anúncio cujo marketplace foi excluído: continua no produto até o usuário decidir
+  const orfaos = prod.listings.filter(l=> !state.profiles.some(p=> p.id === l.marketplaceId));
+  if(!existente) canais[state.profiles[0].id].ativo = true;
+  let ultimoEditado = null;
+
   const form = document.getElementById('skuForm');
   form.style.display = 'block';
-  abrirPainel(editingSkuId ? 'Editar produto' : 'Novo produto',
-    editingSkuId ? 'O SKU é gravado como estiver escrito -- o sufixo do marketplace não é reaplicado na edição.'
-                 : 'Informe o custo e escolha entre definir o preço ou a margem. O sistema calcula o resto.');
-
-  const mktSelectorHtml = !editingSkuId
-    ? `<div class="field textrow"><label>Marketplaces onde este produto vai ser vendido
-        <span class="hint">Selecione um ou mais &mdash; vira um cadastro por marketplace, cada um com as taxas da plataforma. O SKU digitado acima ganha o nome do marketplace no final (ex.: "07-01-46" vira "07-01-46-shopee").</span></label>
-        <div class="mkt-checks">${state.profiles.map(p=>`<label class="mkt-check"><input type="checkbox" value="${esc(p.id)}" class="f-mkt-chk" ${p.id===sku.marketplaceId?'checked':''}><span class="mkt-dot" style="background:${esc(p.color)}"></span>${esc(p.label)}</label>`).join('')}</div>
-      </div>`
-    : `<div class="field"><label>Marketplace</label>
-        <select id="f_mkt_single">${state.profiles.map(p=>`<option value="${esc(p.id)}" ${p.id===sku.marketplaceId?'selected':''}>${esc(p.label)}</option>`).join('')}</select>
-      </div>`;
+  abrirPainel(existente ? 'Editar produto' : 'Novo produto',
+    'Custo uma vez só; preço ou margem em cada marketplace. Mudar o custo recalcula todos os canais.');
 
   function costBlockHtml(){
     if(costUnlocked){
-      return `<div class="card inset" style="border-color:var(--accent);padding:14px 16px;margin:8px 0 4px;">
+      return `<div class="card inset" style="border-color:var(--brand);padding:14px 16px;margin:8px 0 4px;">
           <span class="confidence conf-media">Custo alterado manualmente para este produto</span>
-          <p class="sub" style="margin:8px 0 2px;">Este produto deixa de acompanhar a aba "Padrões da empresa" -- mudanças lá não vão mais afetá-lo.</p>
+          <p class="sub" style="margin:8px 0 2px;">Este produto deixa de acompanhar a aba "Custos da empresa" -- mudanças lá não vão mais afetá-lo.</p>
           <div class="grid2">
-            <div class="field"><label>Custo fixo alocado -- R$</label><input type="number" step="0.01" id="f_fixedCost" value="${esc(sku.fixedCost)}"></div>
-            <div class="field"><label>Outros custos diversos -- R$</label><input type="number" step="0.01" id="f_misc" value="${esc(sku.misc)}"></div>
-            <div class="field"><label>Imposto sobre a venda -- %</label><input type="number" step="0.01" id="f_tax" value="${esc(sku.taxPct)}"></div>
-            <div class="field"><label>Marketing / Ads -- %</label><input type="number" step="0.01" id="f_marketing" value="${esc(sku.marketingPct)}"></div>
+            <div class="field"><label>Custo fixo alocado -- R$</label><input type="number" step="0.01" id="f_fixedCost" value="${esc(prod.fixedCost)}"></div>
+            <div class="field"><label>Outros custos diversos -- R$</label><input type="number" step="0.01" id="f_misc" value="${esc(prod.misc)}"></div>
+            <div class="field"><label>Imposto sobre a venda -- %</label><input type="number" step="0.01" id="f_tax" value="${esc(prod.taxPct)}"></div>
+            <div class="field"><label>Marketing / Ads -- %</label><input type="number" step="0.01" id="f_marketing" value="${esc(prod.marketingPct)}"></div>
           </div>
-          <button type="button" class="btn small" id="f_relock" style="margin-top:10px;">Voltar a usar os padrões da empresa</button>
+          <button type="button" class="btn small" id="f_relock" style="margin-top:10px;">Voltar a usar os custos da empresa</button>
         </div>`;
     }
     return `<div class="card inset" style="padding:14px 16px;margin:8px 0 4px;">
-        <p class="sub" style="margin:0 0 9px;">Vinculado aos padrões da empresa: custo fixo ${brl(state.padroes.fixedCost)} &middot; outros ${brl(state.padroes.misc)} &middot; imposto ${state.padroes.taxPct}% &middot; marketing ${state.padroes.marketingPct}%. Mudar esses valores na aba "Padrões da empresa" recalcula este produto sozinho.</p>
+        <p class="sub" style="margin:0 0 9px;">Vinculado aos custos da empresa: custo fixo ${brl(state.padroes.fixedCost)} &middot; outros ${brl(state.padroes.misc)} &middot; imposto ${state.padroes.taxPct}% &middot; marketing ${state.padroes.marketingPct}%.</p>
         <button type="button" class="btn small" id="f_unlock">Desbloquear e editar só para este produto</button>
       </div>`;
   }
 
-  // Vale para qualquer flag de marketplace: no cadastro múltiplo basta um dos selecionados
-  // pedir o campo para ele aparecer; na edição vale o marketplace escolhido no momento.
-  function anyProfileFlag(flag){
-    if(!editingSkuId){
-      const els = form.querySelectorAll('.f-mkt-chk');
-      if(els.length === 0) return !!profileOf(sku.marketplaceId)[flag]; // render inicial, DOM ainda não existe
-      return Array.from(els).filter(c=>c.checked).some(c => !!profileOf(c.value)[flag]);
-    }
-    const singleEl = document.getElementById('f_mkt_single');
-    return !!profileOf(singleEl ? singleEl.value : sku.marketplaceId)[flag];
-  }
-  function syncConditionalRows(){
-    const freight = document.getElementById('f_freightRow');
-    const fee = document.getElementById('f_feeRow');
-    if(freight) freight.style.display = anyProfileFlag('variableFreight') ? 'flex' : 'none';
-    // num marketplace com faixas de preço quem define a taxa fixa é a faixa, não o produto
-    if(fee) fee.style.display = (anyProfileFlag('variableFixedFee') && !anyProfileFlag('tiered')) ? 'flex' : 'none';
-    updateLivePreview();
+  function canalHtml(p){
+    const c = canais[p.id];
+    const valor = c.mode === 'margin' ? c.marginTarget : c.price;
+    const mostraFrete = p.variableFreight;
+    const mostraTaxa = p.variableFixedFee && !p.tiered;
+    return `<div class="canal${c.ativo?' on':''}" data-mid="${esc(p.id)}">
+      <label class="canal-head">
+        <input type="checkbox" class="c-ativo" ${c.ativo?'checked':''}>
+        <span class="mkt-dot" style="background:${esc(p.color)}"></span>
+        <span class="canal-nome">${esc(p.label)}</span>
+        ${p.tiered ? '<span class="tag" style="margin-left:0;">faixas</span>' : ''}
+        <span class="canal-res" data-res></span>
+      </label>
+      <div class="canal-body">
+        <div class="canal-grid">
+          <div class="cg"><span class="cl">Definir por</span>
+            <div class="mini-toggle">
+              <button type="button" class="${c.mode==='price'?'on':''}" data-modo="price">Preço</button>
+              <button type="button" class="${c.mode==='margin'?'on':''}" data-modo="margin">Margem</button>
+            </div></div>
+          <div class="cg"><span class="cl" data-rotulo-valor>${c.mode==='margin'?'Margem %':'Preço R$'}</span>
+            <input type="number" step="0.01" data-f="valor" value="${esc(valor)}"></div>
+          <div class="cg"><span class="cl">Cupom R$</span><input type="number" step="0.01" data-f="coupon" value="${esc(c.coupon)}"></div>
+          ${mostraFrete ? `<div class="cg"><span class="cl">Frete líquido R$</span><input type="number" step="0.01" data-f="freightNet" value="${esc(c.freightNet)}"></div>` : ''}
+          ${mostraTaxa ? `<div class="cg"><span class="cl">Taxa fixa R$</span><input type="number" step="0.01" data-f="mktFixedFee" value="${esc(c.mktFixedFee)}"></div>` : ''}
+          <div class="cg cg-sku"><span class="cl">SKU neste canal</span><input type="text" data-f="sku" value="${esc(c.sku || applyMktSuffix(prod.sku, p.id))}"></div>
+        </div>
+      </div>
+    </div>`;
   }
 
   form.innerHTML = `
     <div class="grid2">
-      <div class="field"><label>SKU / referência</label><input type="text" id="f_sku" style="width:180px;text-align:left;" value="${esc(sku.sku)}"></div>
-      <div class="field"><label>Nome do produto</label><input type="text" id="f_name" style="width:220px;text-align:left;" value="${esc(sku.name)}"></div>
+      <div class="field"><label>SKU do produto<span class="hint">Cada canal ganha o sufixo do marketplace.</span></label><input type="text" id="f_sku" style="width:180px;text-align:left;" value="${esc(prod.sku)}"></div>
+      <div class="field"><label>Nome do produto</label><input type="text" id="f_name" style="width:220px;text-align:left;" value="${esc(prod.name)}"></div>
     </div>
-    ${mktSelectorHtml}
-    <div class="section-label">Custos e encargos deste produto</div>
-    <div class="grid2">
-      <div class="field"><label>Custo do produto (CMV) -- R$</label><input type="number" step="0.01" id="f_cogs" value="${esc(sku.cogs)}"></div>
-      <div class="field"><label>Cupom pago pelo vendedor -- R$</label><input type="number" step="0.01" id="f_coupon" value="${esc(sku.coupon)}"></div>
-      <div class="field" id="f_freightRow" style="display:none"><label>Frete: ganho/subsídio líquido -- R$</label><input type="number" step="0.01" id="f_freight" value="${esc(sku.freightNet)}"></div>
-      <div class="field" id="f_feeRow" style="display:none"><label>Taxa fixa deste anúncio -- R$<span class="hint">Este marketplace cobra taxa fixa variável por anúncio.</span></label><input type="number" step="0.01" id="f_mktFixedFee" value="${esc(sku.mktFixedFee)}"></div>
-    </div>
+    <div class="section-label">Custo (vale para todos os marketplaces)</div>
+    <div class="field"><label>Custo do produto (CMV) -- R$</label><input type="number" step="0.01" id="f_cogs" value="${esc(prod.cogs)}"></div>
     <div id="f_costBlockWrap">${costBlockHtml()}</div>
-    <div class="section-label">Como definir o preço</div>
-    <div class="mode-toggle">
-      <button type="button" class="mode-btn ${sku.mode==='price'?'active':''}" id="f_modePrice">Informar preço de venda</button>
-      <button type="button" class="mode-btn ${sku.mode==='margin'?'active':''}" id="f_modeMargin">Informar margem desejada</button>
-    </div>
-    <div class="field" id="f_priceRow" style="display:${sku.mode==='price'?'flex':'none'}"><label>Preço de venda -- R$</label><input type="number" step="0.01" id="f_price" value="${esc(sku.price)}"></div>
-    <div class="field" id="f_marginRow" style="display:${sku.mode==='margin'?'flex':'none'}"><label>Margem desejada -- %<span class="hint">Sobre o valor que sobra na sua mão depois do marketplace, não sobre o preço de venda.</span></label><input type="number" step="0.1" id="f_marginTarget" value="${esc(sku.marginTarget)}"></div>
-    <div class="live-preview" id="f_preview"></div>
+    <div class="section-label">Preço em cada marketplace</div>
+    <p class="sub" style="margin:8px 0 10px;">Marque onde o produto é vendido. Ao marcar um canal novo, ele começa com o mesmo preço ou margem do último canal que você mexeu.</p>
+    <div class="canais">${state.profiles.map(canalHtml).join('')}</div>
+    ${orfaos.length ? `<p class="warnline" style="margin-top:10px;color:var(--warn);">${orfaos.length} anúncio(s) deste produto estão num marketplace que foi excluído e serão removidos ao salvar.</p>` : ''}
     <div class="form-actions">
       <button class="btn primary" id="f_save">Salvar produto</button>
       <button class="btn" id="f_cancel">Cancelar</button>
-      <span style="font-size:10.5px;color:var(--ink-mute);">Ctrl+Enter salva &middot; Esc cancela</span>
+      <span style="font-size:11px;color:var(--ink-mute);">Ctrl+Enter salva &middot; Esc cancela</span>
     </div>
   `;
 
-  // Prévia ao vivo: mostra preço, valor recebido e margem enquanto o usuário digita, sem
-  // precisar salvar para descobrir se a conta fecha.
-  function updateLivePreview(){
-    const box = document.getElementById('f_preview');
-    if(!box) return;
-    const val = id => parseFloat((document.getElementById(id)||{}).value) || 0;
-    const ids = editingSkuId
-      ? [document.getElementById('f_mkt_single').value]
-      : Array.from(form.querySelectorAll('.f-mkt-chk:checked')).map(c=>c.value);
-    if(ids.length === 0){ box.innerHTML = `<div class="lp"><div class="k">Prévia</div><div class="v small">Selecione ao menos um marketplace.</div></div>`; return; }
-    const p = profileOf(ids[0]);
-    const provisorio = {
-      cogs: val('f_cogs'), coupon: val('f_coupon'), freightNet: val('f_freight'), mktFixedFee: val('f_mktFixedFee'),
-      mode: fmode, price: val('f_price'), marginTarget: val('f_marginTarget'),
-      costOverride: costUnlocked,
+  const val = id => parseFloat((document.getElementById(id)||{}).value) || 0;
+  function produtoDoRascunho(){
+    return {
+      id: prod.id, sku: document.getElementById('f_sku').value.trim(), name: document.getElementById('f_name').value.trim(),
+      cogs: val('f_cogs'), costOverride: costUnlocked,
       fixedCost: costUnlocked ? val('f_fixedCost') : state.padroes.fixedCost,
       misc: costUnlocked ? val('f_misc') : state.padroes.misc,
       taxPct: costUnlocked ? val('f_tax') : state.padroes.taxPct,
       marketingPct: costUnlocked ? val('f_marketing') : state.padroes.marketingPct
     };
-    const r = calcSku(p, provisorio);
-    const extra = ids.length > 1 ? `<div class="lp"><div class="k">Demais marketplaces</div><div class="v small">+${ids.length-1} cadastro(s), cada um com as taxas próprios</div></div>` : '';
-    if(r.error){
-      box.innerHTML = `<div class="lp" style="flex:1;"><div class="k">Prévia -- ${esc(p.label)}</div><div class="v small" style="color:var(--bad);">Margem inviável com essas taxas. Reduza a margem desejada.</div></div>`;
-      return;
-    }
-    const ad = adPrices(r.price, p);
-    box.innerHTML = `
-      <div class="lp"><div class="k">Preço -- ${esc(p.label)}</div><div class="v">${brl(r.price)}</div></div>
-      <div class="lp"><div class="k">Você recebe</div><div class="v">${brl(r.netMarketplace)}</div></div>
-      <div class="lp"><div class="k">Lucro</div><div class="v" style="color:${r.profit>=0?'var(--good)':'var(--bad)'}">${brl(r.profit)}</div></div>
-      <div class="lp"><div class="k">Margem</div><div class="v" style="color:${r.marginOnNet>=0?'var(--good)':'var(--bad)'}">${pct(r.marginOnNet)}</div></div>
-      <div class="lp"><div class="k">Anúncio (+20%)</div><div class="v">${brl(ad.p20)}</div></div>
-      ${p.dualAdPrice ? `<div class="lp"><div class="k">Antes (+40%)</div><div class="v">${brl(ad.p40)}</div></div>` : ''}
-      ${extra}`;
+  }
+  function anuncioDoRascunho(mid){
+    const c = canais[mid];
+    return {id: c.id || 'rascunho', marketplaceId: mid, sku: c.sku, mode: c.mode, price: c.price,
+      marginTarget: c.marginTarget, coupon: c.coupon, freightNet: c.freightNet, mktFixedFee: c.mktFixedFee};
+  }
+  // resultado de cada canal na própria linha do canal, recalculado a cada tecla
+  function atualizaResultados(){
+    const pr = produtoDoRascunho();
+    form.querySelectorAll('.canal').forEach(el=>{
+      const mid = el.dataset.mid, c = canais[mid], alvo = el.querySelector('[data-res]');
+      if(!c.ativo){ alvo.innerHTML = '<span class="muted">não vendido aqui</span>'; return; }
+      const r = calcSku(profileOf(mid), visaoDoAnuncio(pr, anuncioDoRascunho(mid)));
+      alvo.innerHTML = r.error
+        ? '<span class="neg">margem inviável</span>'
+        : `<b>${brl(r.price)}</b> <span class="${r.marginOnNet>=0?'pos':'neg'}">${pct(r.marginOnNet)}</span> <span class="muted">recebe ${brl(r.netMarketplace)}</span>`;
+    });
   }
 
   function bindCostBlockEvents(){
     const unlockBtn = document.getElementById('f_unlock');
-    if(unlockBtn) unlockBtn.onclick = ()=>{ costUnlocked = true; document.getElementById('f_costBlockWrap').innerHTML = costBlockHtml(); bindCostBlockEvents(); updateLivePreview(); };
+    if(unlockBtn) unlockBtn.onclick = ()=>{ costUnlocked = true; document.getElementById('f_costBlockWrap').innerHTML = costBlockHtml(); bindCostBlockEvents(); atualizaResultados(); };
     const relockBtn = document.getElementById('f_relock');
     if(relockBtn) relockBtn.onclick = ()=>{
       costUnlocked = false;
-      sku.fixedCost = state.padroes.fixedCost; sku.misc = state.padroes.misc;
-      sku.taxPct = state.padroes.taxPct; sku.marketingPct = state.padroes.marketingPct;
-      document.getElementById('f_costBlockWrap').innerHTML = costBlockHtml(); bindCostBlockEvents(); updateLivePreview();
+      prod.fixedCost = state.padroes.fixedCost; prod.misc = state.padroes.misc;
+      prod.taxPct = state.padroes.taxPct; prod.marketingPct = state.padroes.marketingPct;
+      document.getElementById('f_costBlockWrap').innerHTML = costBlockHtml(); bindCostBlockEvents(); atualizaResultados();
     };
     ['f_fixedCost','f_misc','f_tax','f_marketing'].forEach(id=>{
       const el = document.getElementById(id);
-      if(el) el.addEventListener('input', updateLivePreview);
+      if(el) el.addEventListener('input', ()=>{
+        prod.fixedCost = val('f_fixedCost'); prod.misc = val('f_misc'); prod.taxPct = val('f_tax'); prod.marketingPct = val('f_marketing');
+        atualizaResultados();
+      });
     });
   }
   bindCostBlockEvents();
 
-  if(!editingSkuId){
-    form.querySelectorAll('.f-mkt-chk').forEach(chk=> chk.addEventListener('change', syncConditionalRows));
-  } else {
-    document.getElementById('f_mkt_single').addEventListener('change', syncConditionalRows);
-  }
-  ['f_cogs','f_coupon','f_freight','f_mktFixedFee','f_price','f_marginTarget'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.addEventListener('input', updateLivePreview);
+  form.querySelectorAll('.canal').forEach(el=>{
+    const mid = el.dataset.mid, c = canais[mid];
+    el.querySelector('.c-ativo').addEventListener('change', (e)=>{
+      c.ativo = e.target.checked;
+      el.classList.toggle('on', c.ativo);
+      // canal recém-ligado herda preço/margem do último canal mexido, para não começar do zero
+      if(c.ativo && !c.tocado){
+        const modelo = ultimoEditado && canais[ultimoEditado].ativo ? canais[ultimoEditado]
+          : Object.values(canais).find(x=> x.ativo && x !== c && x.tocado);
+        if(modelo){ c.mode = modelo.mode; c.price = modelo.price; c.marginTarget = modelo.marginTarget; }
+        c.tocado = true;
+        const sub = el.querySelector('.canal-body');
+        sub.querySelectorAll('[data-modo]').forEach(b=> b.classList.toggle('on', b.dataset.modo === c.mode));
+        el.querySelector('[data-rotulo-valor]').textContent = c.mode === 'margin' ? 'Margem %' : 'Preço R$';
+        el.querySelector('[data-f="valor"]').value = c.mode === 'margin' ? c.marginTarget : c.price;
+      }
+      if(!c.sku) c.sku = el.querySelector('[data-f="sku"]').value;
+      atualizaResultados();
+    });
+    el.querySelectorAll('[data-modo]').forEach(b=> b.addEventListener('click', ()=>{
+      c.mode = b.dataset.modo; c.tocado = true; ultimoEditado = mid;
+      el.querySelectorAll('[data-modo]').forEach(x=> x.classList.toggle('on', x === b));
+      el.querySelector('[data-rotulo-valor]').textContent = c.mode === 'margin' ? 'Margem %' : 'Preço R$';
+      el.querySelector('[data-f="valor"]').value = c.mode === 'margin' ? c.marginTarget : c.price;
+      atualizaResultados();
+    }));
+    el.querySelectorAll('[data-f]').forEach(inp=> inp.addEventListener('input', ()=>{
+      const f = inp.dataset.f;
+      if(f === 'sku'){ c.sku = inp.value.trim(); c.skuCustom = true; return; }
+      const n = parseFloat(inp.value) || 0;
+      if(f === 'valor'){ if(c.mode === 'margin') c.marginTarget = n; else c.price = n; }
+      else c[f] = n;
+      c.tocado = true; ultimoEditado = mid;
+      atualizaResultados();
+    }));
   });
-  syncConditionalRows();
+  // SKU do produto mudou: os SKUs de canal que seguiam o padrão acompanham; os editados à mão não
+  document.getElementById('f_sku').addEventListener('input', ()=>{
+    const base = document.getElementById('f_sku').value.trim();
+    form.querySelectorAll('.canal').forEach(el=>{
+      const c = canais[el.dataset.mid];
+      if(c.skuCustom) return;
+      c.sku = applyMktSuffix(base, el.dataset.mid);
+      el.querySelector('[data-f="sku"]').value = c.sku;
+    });
+  });
+  ['f_cogs','f_name'].forEach(id=> document.getElementById(id).addEventListener('input', atualizaResultados));
+  atualizaResultados();
 
-  document.getElementById('f_modePrice').onclick = ()=>{
-    fmode='price';
-    document.getElementById('f_modePrice').classList.add('active');
-    document.getElementById('f_modeMargin').classList.remove('active');
-    document.getElementById('f_priceRow').style.display='flex';
-    document.getElementById('f_marginRow').style.display='none';
-    updateLivePreview();
-  };
-  document.getElementById('f_modeMargin').onclick = ()=>{
-    fmode='margin';
-    document.getElementById('f_modeMargin').classList.add('active');
-    document.getElementById('f_modePrice').classList.remove('active');
-    document.getElementById('f_marginRow').style.display='flex';
-    document.getElementById('f_priceRow').style.display='none';
-    updateLivePreview();
-  };
   form.addEventListener('keydown', (e)=>{
     if(e.key === 'Escape'){ e.preventDefault(); closeSkuForm(); }
     if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); document.getElementById('f_save').click(); }
   });
   document.getElementById('f_sku').focus();
-  form.scrollIntoView({block:'nearest', behavior:'smooth'});
   document.getElementById('f_cancel').onclick = closeSkuForm;
+
   document.getElementById('f_save').onclick = ()=>{
-    const skuCode = document.getElementById('f_sku').value.trim();
-    const name = document.getElementById('f_name').value.trim();
-    if(!skuCode || !name){ toast('Preencha o SKU e o nome do produto.', 'err'); return; }
-    const marketplaceIds = editingSkuId
-      ? [document.getElementById('f_mkt_single').value]
-      : Array.from(form.querySelectorAll('.f-mkt-chk:checked')).map(c=>c.value);
-    if(marketplaceIds.length===0){ toast('Selecione ao menos um marketplace.', 'err'); return; }
-    const base = {
-      sku: skuCode, name,
-      cogs: parseFloat(document.getElementById('f_cogs').value)||0,
-      coupon: parseFloat(document.getElementById('f_coupon').value)||0,
-      freightNet: parseFloat((document.getElementById('f_freight')||{}).value)||0,
-      mktFixedFee: parseFloat((document.getElementById('f_mktFixedFee')||{}).value)||0,
-      mode: fmode,
-      price: parseFloat(document.getElementById('f_price').value)||0,
-      marginTarget: parseFloat(document.getElementById('f_marginTarget').value)||0,
-      costOverride: costUnlocked,
-      fixedCost: costUnlocked ? (parseFloat((document.getElementById('f_fixedCost')||{}).value)||0) : state.padroes.fixedCost,
-      misc: costUnlocked ? (parseFloat((document.getElementById('f_misc')||{}).value)||0) : state.padroes.misc,
-      taxPct: costUnlocked ? (parseFloat((document.getElementById('f_tax')||{}).value)||0) : state.padroes.taxPct,
-      marketingPct: costUnlocked ? (parseFloat((document.getElementById('f_marketing')||{}).value)||0) : state.padroes.marketingPct
-    };
-    if(editingSkuId){
-      const novoMkt = marketplaceIds[0];
-      let skuFinal = skuCode;
-      // Trocar o marketplace na edição deixava o SKU com o sufixo da plataforma antiga
-      // (ex.: "07-01-46-shopee" listado no Mercado Livre). Oferece corrigir, sem forçar.
-      if(novoMkt !== marketplaceOriginal){
-        const sufAntigo = '-' + mktSlug(marketplaceOriginal);
-        const sufNovo = '-' + mktSlug(novoMkt);
-        if(skuFinal.endsWith(sufAntigo) && !skuFinal.endsWith(sufNovo)){
-          const sugerido = skuFinal.slice(0, -sufAntigo.length) + sufNovo;
-          if(confirm(`Este produto mudou de marketplace, mas o SKU ainda termina em "${sufAntigo}".\n\nAtualizar para "${sugerido}"?\n\n(Cancelar mantém "${skuFinal}" como está.)`)) skuFinal = sugerido;
-        }
-      }
-      const idx = state.skus.findIndex(s=>s.id===editingSkuId);
-      state.skus[idx] = Object.assign({}, base, {id:editingSkuId, sku:skuFinal, marketplaceId: novoMkt});
-      state.selectedSkuId = editingSkuId;
-      toast(`"${skuFinal}" atualizado.`, 'ok');
+    const pr = produtoDoRascunho();
+    if(!pr.sku || !pr.name){ toast('Preencha o SKU e o nome do produto.', 'err'); return; }
+    const ativos = state.profiles.filter(p=> canais[p.id].ativo).map(p=> p.id);
+    if(ativos.length === 0){ toast('Marque ao menos um marketplace onde o produto é vendido.', 'err'); return; }
+    // SKU de canal vazio volta ao padrão
+    ativos.forEach(mid=>{ if(!canais[mid].sku) canais[mid].sku = applyMktSuffix(pr.sku, mid); });
+
+    const outro = state.products.find(x=> x.sku === pr.sku && x.id !== editingSkuId);
+    if(outro && !confirm(`Já existe um produto com o SKU "${pr.sku}" (${outro.name}). Salvar assim mesmo como produto separado?`)) return;
+    const conflitos = ativos.filter(mid=> state.products.some(x=> x.id !== editingSkuId
+      && x.listings.some(l=> l.marketplaceId === mid && l.sku === canais[mid].sku)));
+    if(conflitos.length && !confirm(`O SKU de canal já está em uso por outro produto em: ${conflitos.map(m=> profileOf(m).label).join(', ')}. Salvar assim mesmo?`)) return;
+    const removidos = existente ? existente.listings.filter(l=> !ativos.includes(l.marketplaceId)) : [];
+    const removidosValidos = removidos.filter(l=> state.profiles.some(p=> p.id === l.marketplaceId));
+    if(removidosValidos.length && !confirm(`Remover o anúncio deste produto em: ${removidosValidos.map(l=> profileOf(l.marketplaceId).label).join(', ')}?`)) return;
+
+    const listings = ativos.map(mid=>{
+      const c = canais[mid];
+      return normalizeListing({id: c.id || novoId(), marketplaceId: mid, sku: c.sku, mode: c.mode,
+        price: c.price, marginTarget: c.marginTarget, coupon: c.coupon, freightNet: c.freightNet, mktFixedFee: c.mktFixedFee});
+    });
+    let alvo;
+    if(existente){
+      alvo = existente;
+      Object.assign(alvo, pr, {id: existente.id, listings});
     } else {
-      const skuFor = mid => applyMktSuffix(skuCode, mid);
-      const conflicts = marketplaceIds.filter(mid => state.skus.some(s => s.sku===skuFor(mid) && s.marketplaceId===mid));
-      if(conflicts.length){
-        const names = conflicts.map(id=>profileOf(id).label).join(', ');
-        if(!confirm(`Já existe um produto com o SKU "${skuCode}" em: ${names}. Sobrescrever esses e criar os demais?`)) return;
-      }
-      let firstId = null, criados = 0, atualizados = 0;
-      marketplaceIds.forEach(mid=>{
-        const skuMid = skuFor(mid);
-        const existingIdx = state.skus.findIndex(s => s.sku===skuMid && s.marketplaceId===mid);
-        const newId = existingIdx!==-1 ? state.skus[existingIdx].id : uid();
-        if(!firstId) firstId = newId;
-        const data = Object.assign({}, base, {id:newId, sku:skuMid, marketplaceId: mid});
-        if(existingIdx!==-1){ state.skus[existingIdx] = data; atualizados++; } else { state.skus.push(data); criados++; }
-      });
-      state.selectedSkuId = firstId;
-      toast(`${criados} cadastro(s) criado(s)` + (atualizados?`, ${atualizados} sobrescrito(s)`:'') + '.', 'ok', 'Produto salvo');
+      alvo = normalizeProduct(Object.assign({}, pr, {id: 'p_' + novoId(), listings}));
+      state.products.push(alvo);
     }
+    normalizeProduct(alvo);
+    if(!alvo.listings.some(l=> l.id === state.selectedSkuId)) state.selectedSkuId = alvo.listings[0].id;
+    toast(existente
+      ? `"${alvo.sku}" atualizado em ${listings.length} marketplace(s).` + (skuBaseOriginal !== alvo.sku ? ' SKU do produto alterado.' : '')
+      : `"${alvo.sku}" criado com ${listings.length} anúncio(s).`, 'ok', 'Produto salvo');
     saveState();
     closeSkuForm();
     renderProdutos();
@@ -1694,13 +1941,18 @@ function closeSkuForm(){
   document.getElementById('skuForm').innerHTML='';
 }
 function deleteSku(id){
-  const sku = state.skus.find(s=>s.id===id);
-  if(!confirm(`Excluir o produto "${sku?sku.sku:id}"? Essa ação não pode ser desfeita.`)) return;
-  state.skus = state.skus.filter(s=>s.id!==id);
-  if(state.selectedSkuId===id) state.selectedSkuId = state.skus[0] ? state.skus[0].id : null;
+  const prod = produtoPorId(id);
+  if(!prod) return;
+  const n = prod.listings.length;
+  if(!confirm(`Excluir o produto "${prod.sku}" e ${n === 1 ? 'o anúncio dele' : 'os ' + n + ' anúncios dele'}? Essa ação não pode ser desfeita.`)) return;
+  state.products = state.products.filter(p=> p.id !== id);
+  if(!anuncioPorId(state.selectedSkuId)){
+    const primeiro = state.products.find(p=> p.listings.length);
+    state.selectedSkuId = primeiro ? primeiro.listings[0].id : null;
+  }
   saveState();
   renderProdutos();
-  toast(`"${sku?sku.sku:id}" excluído.`, 'ok');
+  toast(`"${prod.sku}" excluído.`, 'ok');
 }
 
 // Atalho: "/" foca a busca, como na maioria das ferramentas de catálogo
@@ -1726,7 +1978,7 @@ function openMarketplacePicker(titleText, subtitleText, confirmLabel, onConfirm)
   box.innerHTML = `
     <div class="mkt-checks" style="margin-bottom:12px;">
       ${state.profiles.map(p=>{
-        const n = state.skus.filter(s=>s.marketplaceId===p.id).length;
+        const n = listagens().filter(s=>s.marketplaceId===p.id).length;
         return `<label class="mkt-check"><input type="checkbox" value="${esc(p.id)}" class="exp-mkt-chk" ${n?'checked':''}><span class="mkt-dot" style="background:${esc(p.color)}"></span>${esc(p.label)} <span style="color:var(--ink-mute);font-size:10.5px;">(${n})</span></label>`;
       }).join('')}
     </div>
@@ -1770,7 +2022,7 @@ function abrirExportEdicao(){
 
 function exportSpreadsheet(marketplaceIds){
   const chosenSet = new Set(marketplaceIds);
-  const rows = state.skus.filter(s => chosenSet.has(s.marketplaceId));
+  const rows = listagens().filter(s => chosenSet.has(s.marketplaceId));
   if(rows.length === 0){ toast('Nenhum produto cadastrado nos marketplaces selecionados.', 'err'); return; }
   const hasDualAny = marketplaceIds.some(id => profileOf(id).dualAdPrice);
   const header = ['SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda','Lucro Líquido',
@@ -1807,17 +2059,17 @@ function round2(v){ return Math.round((v+Number.EPSILON)*100)/100; }
 
 function exportEditSpreadsheet(marketplaceIds){
   const chosenSet = new Set(marketplaceIds);
-  const rows = state.skus.filter(s => chosenSet.has(s.marketplaceId));
+  const rows = listagens().filter(s => chosenSet.has(s.marketplaceId));
   if(rows.length === 0){ toast('Nenhum produto cadastrado nos marketplaces selecionados.', 'err'); return; }
   const numBR = v => round2(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-  const header = ['SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda','Margem Desejada (%)',
+  const header = ['SKU do Produto','SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda','Margem Desejada (%)',
     'Cupom','Frete Líquido','Taxa Fixa do Anúncio',
     'Custo Fixo (só se custo alterado)','Outros Custos (só se custo alterado)','Imposto % (só se custo alterado)','Marketing % (só se custo alterado)'];
   const data = [header];
   rows.forEach(sku=>{
     const p = profileOf(sku.marketplaceId);
     data.push([
-      sku.sku, sku.name, p.label,
+      sku.productSku, sku.sku, sku.name, p.label,
       numBR(sku.cogs),
       sku.mode==='price' ? numBR(sku.price) : '',
       sku.mode==='margin' ? numBR(sku.marginTarget) : '',
@@ -1853,7 +2105,8 @@ const IMPORT_FIELDS = [
   {key:'coupon', label:'Cupom pago pelo vendedor', required:false, synonyms:['cupom','cupomvendedor']},
   {key:'freightNet', label:'Frete: ganho/subsídio líquido', required:false, synonyms:['frete','freteliquido','fretesubsidio','fretegratissubsidio']},
   {key:'mktFixedFee', label:'Taxa fixa do anúncio (marketplaces com taxa variável)', required:false, synonyms:['taxafixa','taxafixaanuncio','taxafixadoanuncio','tarifafixa','taxafixaporitem']},
-  {key:'marketplace', label:'Marketplace da linha', required:false, synonyms:['marketplace','canal','plataforma','canaldevenda','loja']}
+  {key:'marketplace', label:'Marketplace da linha', required:false, synonyms:['marketplace','canal','plataforma','canaldevenda','loja']},
+  {key:'productSku', label:'SKU do produto (pai)', required:false, synonyms:['skudoproduto','skuproduto','skupai','skubase','produtopai']}
 ];
 
 function normalizeHeader(s){
@@ -2160,7 +2413,10 @@ function buildImportSku(row, marketplaceId){
     return v===undefined || v==='' ? undefined : v;
   };
   const skuRaw = String(g('sku')||'').trim();
-  const sku = applyMktSuffix(skuRaw, marketplaceId);
+  // SKU que já é o de um anúncio neste marketplace entra como está. Forçar o sufixo sempre
+  // duplicava, na reimportação, qualquer SKU fora do padrão (ex.: XPTO-99 virava XPTO-99-shein)
+  const jaExiste = listagens().some(v=> v.sku === skuRaw && v.marketplaceId === marketplaceId);
+  const sku = jaExiste ? skuRaw : applyMktSuffix(skuRaw, marketplaceId);
   const num = (v, fallback) => { if(v===undefined) return fallback; const n = parseNumberBR(v); return isNaN(n) ? fallback : n; };
   const priceMapped = num(g('price'), null);
   const marginMapped = num(g('marginTarget'), null);
@@ -2183,7 +2439,8 @@ function buildImportSku(row, marketplaceId){
     coupon: num(g('coupon'), state.padroes.coupon),
     freightNet: num(g('freightNet'), state.padroes.freightNet),
     mktFixedFee: num(g('mktFixedFee'), 0),
-    mode, price, marginTarget
+    mode, price, marginTarget,
+    productSku: String(g('productSku')||'').trim()
   };
 }
 
@@ -2203,7 +2460,7 @@ function renderImportStep3(){
       importState.marketplaces.forEach(mktId=> candidates.push(buildImportSku(row, mktId)));
     });
   }
-  const existingKeys = new Set(state.skus.map(s => s.sku+'::'+s.marketplaceId));
+  const existingKeys = new Set(listagens().map(s => s.sku+'::'+s.marketplaceId));
   const dupCount = candidates.filter(c => existingKeys.has(c.sku+'::'+c.marketplaceId)).length;
   importState.preview = candidates;
 
@@ -2252,24 +2509,57 @@ function renderImportStep3(){
     if(candidates.length === 0){ toast('Nenhuma linha válida para importar.', 'err'); return; }
     const dupRadio = box.querySelector('input[name=dupstrategy]:checked');
     const strategy = dupRadio ? dupRadio.value : 'overwrite';
-    let added = 0, overwritten = 0, skipped = 0;
+    // Cada linha da planilha é um anúncio. Ele entra, nesta ordem: no anúncio que já tem esse
+    // mesmo SKU no mesmo marketplace; num produto que já existe com o mesmo SKU pai (vira um canal
+    // novo dele); ou num produto novo. O custo da linha vale para o produto inteiro -- é o que faz
+    // "mudar o custo na planilha" atualizar todos os marketplaces de uma vez.
+    let novosProdutos = 0, novosAnuncios = 0, atualizados = 0, pulados = 0;
+    const custosVistos = new Map();   // produto -> custos que apareceram nesta importação
+    const aplicaProduto = (prod, c)=>{
+      prod.name = c.name || prod.name;
+      prod.cogs = c.cogs; prod.costOverride = c.costOverride;
+      prod.fixedCost = c.fixedCost; prod.misc = c.misc; prod.taxPct = c.taxPct; prod.marketingPct = c.marketingPct;
+      if(!custosVistos.has(prod.id)) custosVistos.set(prod.id, new Set());
+      custosVistos.get(prod.id).add(String(c.cogs));
+    };
+    const aplicaAnuncio = (lst, c)=>{
+      lst.mode = c.mode; lst.price = c.price; lst.marginTarget = c.marginTarget;
+      lst.coupon = c.coupon; lst.freightNet = c.freightNet; lst.mktFixedFee = c.mktFixedFee;
+    };
     candidates.forEach(c=>{
-      const idx = state.skus.findIndex(s => s.sku===c.sku && s.marketplaceId===c.marketplaceId);
-      if(idx !== -1){
-        if(strategy==='skip'){ skipped++; return; }
-        c.id = state.skus[idx].id;
-        state.skus[idx] = c;
-        overwritten++;
+      let achado = null;
+      for(const prod of state.products){
+        const lst = prod.listings.find(l=> l.sku === c.sku && l.marketplaceId === c.marketplaceId);
+        if(lst){ achado = {prod, lst}; break; }
+      }
+      if(achado){
+        if(strategy === 'skip'){ pulados++; return; }
+        aplicaProduto(achado.prod, c); aplicaAnuncio(achado.lst, c); atualizados++;
+        return;
+      }
+      const base = c.productSku || skuBase(c.sku, state.profiles);
+      const lst = normalizeListing({id: novoId(), marketplaceId: c.marketplaceId, sku: c.sku});
+      aplicaAnuncio(lst, c);
+      const pai = state.products.find(p=> p.sku === base && !p.listings.some(l=> l.marketplaceId === c.marketplaceId));
+      if(pai){
+        aplicaProduto(pai, c); pai.listings.push(lst); novosAnuncios++;
       } else {
-        state.skus.push(c);
-        added++;
+        const prod = normalizeProduct({id: 'p_' + novoId(), sku: base, name: c.name, listings: [lst]});
+        aplicaProduto(prod, c);
+        state.products.push(prod); novosProdutos++;
       }
     });
-    if(!state.skus.some(s=>s.id===state.selectedSkuId)) state.selectedSkuId = state.skus[0] ? state.skus[0].id : null;
+    let conflitosDeCusto = 0;
+    custosVistos.forEach(s=>{ if(s.size > 1) conflitosDeCusto++; });
+    if(!anuncioPorId(state.selectedSkuId)){
+      const primeiro = state.products.find(p=> p.listings.length);
+      state.selectedSkuId = primeiro ? primeiro.listings[0].id : null;
+    }
     saveState();
     closeImportWizard();
     renderProdutos();
-    toast(`${added} novo(s), ${overwritten} atualizado(s), ${skipped} pulado(s).`, 'ok', 'Importação concluída');
+    toast(`${novosProdutos} produto(s) novo(s), ${novosAnuncios} anúncio(s) novo(s) em produtos existentes, ${atualizados} atualizado(s), ${pulados} pulado(s).`, 'ok', 'Importação concluída');
+    if(conflitosDeCusto) toast(`${conflitosDeCusto} produto(s) vieram com custos diferentes em linhas diferentes da planilha. Valeu o da última linha para todos os marketplaces do produto.`, 'warn', 'Custos divergentes na planilha');
   };
 }
 
@@ -2380,7 +2670,7 @@ function atualizaResumoDaLinha(inp, p, i){
 
 function renderMarketplaces(){
   const box = document.getElementById('mktCards');
-  const usageCount = id => state.skus.filter(s=>s.marketplaceId===id).length;
+  const usageCount = id => listagens().filter(s=>s.marketplaceId===id).length;
   box.innerHTML = state.profiles.map(p=>{
     const used = usageCount(p.id);
     return `<div class="card${p.tiered?' wide':''}" data-mktid="${esc(p.id)}">
@@ -2487,9 +2777,9 @@ function renderMarketplaces(){
             // primeira vez que liga: semeia cada produto com o valor único que valia antes,
             // para nenhum produto passar a calcular com taxa fixa zerada sem o usuário perceber
             let semeados = 0;
-            state.skus.forEach(s=>{
+            state.products.forEach(prod=> prod.listings.forEach(s=>{
               if(s.marketplaceId===id && !Number(s.mktFixedFee)){ s.mktFixedFee = Number(p.fixedFee)||0; semeados++; }
-            });
+            }));
             if(semeados && p.fixedFee) toast(`${semeados} produto(s) deste marketplace começaram com ${brl(p.fixedFee)} de taxa fixa. Ajuste um a um no formulário do produto.`, 'warn', 'Taxa fixa agora é por produto');
           }
         }
@@ -2502,9 +2792,9 @@ function renderMarketplaces(){
     b.onclick = ()=>{
       if(state.profiles.length<=1) return;
       const id = b.dataset.delmkt;
-      const orfaos = state.skus.filter(s=>s.marketplaceId===id).length;
+      const orfaos = listagens().filter(s=>s.marketplaceId===id).length;
       const aviso = orfaos
-        ? `\n\nATENÇÃO: ${orfaos} produto(s) estão cadastrados nele e ficarão órfãos -- vão aparecer marcados como "marketplace removido" e sem cálculo válido até você reatribuí-los.`
+        ? `\n\nATENÇÃO: ${orfaos} anúncio(s) estão cadastrados nele e ficarão órfãos -- vão aparecer marcados como "marketplace removido" e sem cálculo válido até você reatribuí-los.`
         : '';
       if(!confirm('Excluir o marketplace "' + profileOf(id).label + '"?' + aviso)) return;
       state.profiles = state.profiles.filter(p=>p.id!==id);
@@ -2548,8 +2838,8 @@ function renderPadroes(){
 function renderPadroesImpact(){
   const el = document.getElementById('padroesImpact');
   if(!el) return;
-  const congelados = state.skus.filter(s=>s.costOverride).length;
-  const vinculados = state.skus.length - congelados;
+  const congelados = state.products.filter(s=>s.costOverride).length;
+  const vinculados = state.products.length - congelados;
   el.innerHTML = `<strong>${vinculados}</strong> produto(s) acompanham estes valores em tempo real`
     + (congelados ? ` &middot; <strong style="color:var(--warn);">${congelados}</strong> estão congelados com custo próprio e não mudam daqui.` : '.');
 }
@@ -2606,7 +2896,7 @@ document.getElementById('resetBtn').onclick = ()=>{
 // ---------- SINCRONIZAÇÃO (Google Sheets) ----------
 const GAS_CODE = `// Versão do código. O sistema confere este número e se recusa a gravar numa planilha cujo
 // script seja mais antigo -- script antigo descarta em silêncio as colunas que não conhece.
-var SCRIPT_VERSION = 3;
+var SCRIPT_VERSION = 4;
 
 function doGet(e) {
   return comTrava(function () {
@@ -2623,8 +2913,8 @@ function doPost(e) {
     if (body.action !== 'saveAll') return jsonResponse({ok:false, error:'Ação desconhecida: ' + body.action});
     return comTrava(function () {
       var atual = revisaoAtual();
-      // página antiga em cache em algum dispositivo: não sabe de revisões e sobrescreveria tudo
-      if (body.baseRev === undefined || body.baseRev === null) {
+      // página antiga em cache em algum dispositivo: não conhece o formato atual e sobrescreveria tudo
+      if (body.baseRev === undefined || body.baseRev === null || !(Number(body.clientVersion) >= SCRIPT_VERSION)) {
         return jsonResponse({ok:false, outdatedClient:true,
           error:'Esta página do sistema está desatualizada. Recarregue com Ctrl+Shift+R e tente de novo.'});
       }
@@ -2633,7 +2923,7 @@ function doPost(e) {
         return jsonResponse({ok:false, conflict:true, rev:atual,
           error:'A planilha foi alterada em outro dispositivo depois da última leitura deste.'});
       }
-      writeAll(body.state);
+      writeAll(body.state, body.textFields || {});
       var nova = atual + 1;
       PropertiesService.getScriptProperties().setProperty('rev', String(nova));
       return jsonResponse({ok:true, rev:nova, version:SCRIPT_VERSION});
@@ -2695,7 +2985,20 @@ function readSheetAsObjects(name, headers) {
   });
 }
 
-function writeObjectsToSheet(name, headers, objects, textFields) {
+// Os cabeçalhos são a lista preferida MAIS qualquer campo novo que o sistema mande. Assim um
+// campo novo no sistema não exige colar e publicar o código do Apps Script de novo.
+function cabecalhosDe(preferidos, objects) {
+  var headers = preferidos.slice();
+  objects.forEach(function (o) {
+    Object.keys(o).forEach(function (k) {
+      if (k.charAt(0) !== '_' && headers.indexOf(k) === -1) headers.push(k);
+    });
+  });
+  return headers;
+}
+
+function writeObjectsToSheet(name, preferidos, objects, textFields) {
+  var headers = cabecalhosDe(preferidos, objects);
   var sheet = getOrCreateSheet(name, headers);
   sheet.clearContents();
   sheet.getRange(1, 1, 1, headers.length).setNumberFormat('@').setValues([headers]);
@@ -2718,7 +3021,7 @@ function writeObjectsToSheet(name, headers, objects, textFields) {
 }
 
 var MKT_HEADERS = ['id','label','color','confidence','note','commission','service','transaction','fixedFee','dualAdPrice','variableFreight','variableFixedFee','tiered','tiers'];
-var SKU_HEADERS = ['id','sku','name','marketplaceId','cogs','fixedCost','misc','taxPct','marketingPct','coupon','freightNet','mktFixedFee','mode','price','marginTarget','costOverride'];
+var SKU_HEADERS = ['id','productId','productSku','sku','name','marketplaceId','cogs','fixedCost','misc','taxPct','marketingPct','coupon','freightNet','mktFixedFee','mode','price','marginTarget','costOverride'];
 var PAD_HEADERS = ['fixedCost','misc','taxPct','marketingPct','coupon','freightNet'];
 
 function readAll() {
@@ -2730,10 +3033,10 @@ function readAll() {
   };
 }
 
-function writeAll(state) {
-  writeObjectsToSheet('Marketplaces', MKT_HEADERS, state.profiles || [], ['id','label','tiers']);
-  writeObjectsToSheet('Produtos', SKU_HEADERS, state.skus || [], ['id','sku','marketplaceId']);
-  writeObjectsToSheet('Padroes', PAD_HEADERS, [state.padroes || {}], []);
+function writeAll(state, textFields) {
+  writeObjectsToSheet('Marketplaces', MKT_HEADERS, state.profiles || [], textFields.Marketplaces || ['id','label','tiers']);
+  writeObjectsToSheet('Produtos', SKU_HEADERS, state.skus || [], textFields.Produtos || ['id','productId','productSku','sku','marketplaceId']);
+  writeObjectsToSheet('Padroes', PAD_HEADERS, [state.padroes || {}], textFields.Padroes || []);
 }`;
 document.getElementById('gasCode').textContent = GAS_CODE;
 document.getElementById('copyCodeBtn').onclick = ()=>{
@@ -2778,6 +3081,7 @@ renderTopDisclaimer();
 renderStorageNote();
 renderSyncPill();
 irPara('produtos');
+avisaMigracao();
 if(gasUrl) pullFromSheets(false);
 // Uma aba aberta há horas não sabe o que outro dispositivo salvou. Ao voltar para ela, relê a
 // planilha -- desde que não haja alteração local esperando envio, que seria descartada.
