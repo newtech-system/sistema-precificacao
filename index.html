@@ -2108,7 +2108,10 @@ function exportSpreadsheet(marketplaceIds){
   const rows = listagens().filter(s => chosenSet.has(s.marketplaceId));
   if(rows.length === 0){ toast('Nenhum produto cadastrado nos marketplaces selecionados.', 'err'); return; }
   const hasDualAny = marketplaceIds.some(id => profileOf(id).dualAdPrice);
-  const header = ['SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda','Lucro Líquido',
+  // Dois valores diferentes, com nomes que não deixam confundir: o que cai na mão depois das taxas
+  // do marketplace (base da margem) e o que sobra depois de todos os custos.
+  const header = ['SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda',
+    'Valor Recebido (após taxas do marketplace)','Lucro Líquido (após todos os custos)',
     'Margem (sobre valor recebido)','Margem (sobre preço de venda)','Valor Anúncio (+20%)'];
   if(hasDualAny) header.push('Valor Anúncio (+40%)');
   const numBR = v => FMT_NUM2.format(round2(v));
@@ -2118,13 +2121,13 @@ function exportSpreadsheet(marketplaceIds){
     const p = profileOf(sku.marketplaceId);
     const r = calcSku(p, sku);
     if(r.error){
-      const line = [sku.sku, sku.name, p.label, numBR(sku.cogs), 'inviável', 'inviável', 'inviável', 'inviável', ''];
+      const line = [sku.sku, sku.name, p.label, numBR(sku.cogs), 'inviável', 'inviável', 'inviável', 'inviável', 'inviável', ''];
       if(hasDualAny) line.push('');
       data.push(line);
       return;
     }
     const ad = adPrices(r.price, p);
-    const line = [sku.sku, sku.name, p.label, numBR(sku.cogs), numBR(r.price), numBR(r.profit),
+    const line = [sku.sku, sku.name, p.label, numBR(sku.cogs), numBR(r.price), numBR(r.netMarketplace), numBR(r.profit),
       pctBR(r.marginOnNet), pctBR(r.marginOnPrice), numBR(ad.p20)];
     if(hasDualAny) line.push(ad.p40!==null ? numBR(ad.p40) : '');
     data.push(line);
