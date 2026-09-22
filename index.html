@@ -480,6 +480,44 @@
   .muted{color:var(--ink-mute);}
   .imp-resumo{display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--ink-2);margin-bottom:12px;}
 
+  /* ============ editor em lote ============ */
+  .panel.larga{width:min(1320px,100vw);}
+  .lote-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;margin-bottom:10px;
+    background:var(--brand-dim);border:1px solid var(--line);border-radius:var(--r);font-size:12.5px;}
+  .lote-bar[hidden]{display:none;}
+  .sel-prod{accent-color:var(--brand);margin:0 7px 0 0;vertical-align:-2px;cursor:pointer;}
+  .sel-prod-todos{accent-color:var(--brand);margin:0 5px 0 0;vertical-align:-2px;cursor:pointer;}
+  .lt-topo{display:grid;grid-template-columns:minmax(240px,1fr) minmax(260px,1.3fr);gap:18px;margin-bottom:14px;}
+  @media (max-width:760px){ .lt-topo{grid-template-columns:1fr;} }
+  .lt-add{display:flex;flex-direction:column;gap:7px;align-items:flex-start;}
+  .lt-add textarea{width:100%;resize:vertical;font-family:var(--mono, ui-monospace, monospace);font-size:12.5px;
+    background:var(--surface-2);color:var(--ink);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;}
+  .lt-rot{font-size:12px;font-weight:600;color:var(--ink-2);display:block;}
+  .lt-rot .hint{font-weight:400;display:block;margin-top:2px;}
+  .lt-mkts{display:flex;flex-direction:column;gap:7px;}
+  .lt-wrap{overflow:auto;max-height:calc(100vh - 330px);border:1px solid var(--line);border-radius:var(--r);}
+  table.lt{border-collapse:separate;border-spacing:0;font-size:12px;min-width:100%;}
+  table.lt th, table.lt td{padding:6px 8px;border-bottom:1px solid var(--line-soft);vertical-align:top;text-align:left;white-space:nowrap;}
+  table.lt thead th{position:sticky;background:var(--surface-2);z-index:2;font-weight:600;color:var(--ink-2);}
+  table.lt thead tr:first-child th{top:0;}
+  table.lt thead tr.lt-prelinha th{top:31px;background:var(--surface-3, var(--surface-2));font-weight:400;}
+  .lt-pre-rot{font-weight:600 !important;color:var(--brand-2) !important;vertical-align:middle !important;}
+  table.lt input[type=text]{height:28px;padding:0 7px;font-size:12px;border-radius:var(--r-sm);text-align:left;}
+  table.lt .lt-nome{width:210px;}
+  table.lt [data-col=sku]{width:120px;font-family:var(--mono, ui-monospace, monospace);}
+  table.lt .lt-num, #lt_preCusto{width:78px;}
+  table.lt .lt-valor, .lt-pre-valor{width:70px;}
+  table.lt select{height:28px;font-size:11.5px;padding:0 4px;width:auto;}
+  .lt-cel{display:flex;align-items:center;gap:5px;}
+  .lt-cel input[type=checkbox]{accent-color:var(--brand);margin:0;}
+  .lt-pre .btn{margin-top:5px;}
+  .lt-res{font-size:11px;margin-top:3px;min-height:14px;}
+  .lt-c.off .lt-cel select, .lt-c.off .lt-valor{opacity:.35;}
+  .lt-sku .sku{font-family:var(--mono, ui-monospace, monospace);margin-right:6px;}
+  tr.lt-erro td:first-child{box-shadow:inset 3px 0 0 var(--bad);}
+  .lt-x{vertical-align:middle !important;}
+  .lt-status{font-size:12px;margin:10px 0 0;}
+
   /* ============ usuários, conflitos e histórico ============ */
   .userbtn{display:block;margin-top:9px;background:none;border:0;padding:0;font:inherit;font-size:11.5px;
     color:var(--ink-2);cursor:pointer;text-align:left;}
@@ -553,6 +591,7 @@
       <div class="metrics" id="metrics"></div>
       <div class="prod-grid">
         <div class="card flat">
+          <div id="loteBar" class="lote-bar" hidden></div>
           <div id="tableWrap" class="tablewrap"></div>
         </div>
         <div class="receipt-outer" id="receiptOuter"></div>
@@ -666,6 +705,7 @@
     <div id="importWizard" style="display:none;"></div>
     <div id="exportWizard" style="display:none;"></div>
     <div id="unifyWizard" style="display:none;"></div>
+    <div id="loteWizard" style="display:none;"></div>
   </div>
 </aside>
 
@@ -2014,7 +2054,7 @@ function renderTopDisclaimer(){
 }
 
 function wizardVisivel(){
-  return ['skuForm','importWizard','exportWizard','unifyWizard'].some(id=>{
+  return ['skuForm','importWizard','exportWizard','unifyWizard','loteWizard'].some(id=>{
     const el = document.getElementById(id);
     return el && el.style.display === 'block';
   });
@@ -2038,8 +2078,11 @@ function fecharPainel(){
   document.getElementById('scrim').classList.remove('open');
 }
 // Fechar o painel encerra o que estivesse aberto dentro dele, seja formulário ou assistente.
+// Devolve false quando o editor em lote tinha algo não salvo e a pessoa preferiu ficar nele.
 function fecharTudoDoPainel(){
+  if(!closeLoteWizard()) return false;
   closeSkuForm(); closeImportWizard(); closeExportWizard(); closeUnifyWizard();
+  return true;
 }
 document.getElementById('panelClose').onclick = fecharTudoDoPainel;
 document.getElementById('scrim').onclick = fecharTudoDoPainel;
@@ -2077,6 +2120,7 @@ function topbarHtml(view){
         <option value="exportEdit">Exportar p/ edição em massa</option>
         <option value="unificar">Unificar produtos repetidos</option>
       </select>
+      <button class="btn" id="loteBtn" title="Vários produtos de uma vez: cole os SKUs, marque os marketplaces e preencha em grade">Cadastro em lote</button>
       <button class="btn primary" id="newSkuBtn"><svg class="ic"><use href="#i-plus"/></svg>Novo produto</button>`;
   }
   if(view === 'marketplaces'){
@@ -2110,7 +2154,8 @@ function ligarControlesDaTopbar(view){
       else if(acao === 'exportEdit') abrirExportEdicao();
       else if(acao === 'unificar') unificarProdutosRepetidos();
     });
-    document.getElementById('newSkuBtn').onclick = ()=>{ fecharTudoDoPainel(); openSkuForm(null); };
+    document.getElementById('newSkuBtn').onclick = ()=>{ if(fecharTudoDoPainel()) openSkuForm(null); };
+    document.getElementById('loteBtn').onclick = ()=> abrirLote([]);
   }
   if(view === 'marketplaces'){
     const menu = document.getElementById('newMktMenu');
@@ -2261,7 +2306,7 @@ function renderTable(){
   wrap.innerHTML = `<table class="tabela-produtos">
     <colgroup><col class="c-prod"><col class="c-custo"><col class="c-canal"><col class="c-num"><col class="c-num"><col class="c-marg"><col class="c-anun"><col class="c-acao"></colgroup>
     <thead><tr>
-      <th>Produto</th><th class="num">Custo</th><th>Marketplace</th>
+      <th><input type="checkbox" id="selTodos" class="sel-prod-todos" title="Selecionar todos os produtos da lista (com o filtro atual)"> Produto</th><th class="num">Custo</th><th>Marketplace</th>
       <th class="num">Preço</th><th class="num">Lucro</th><th class="num">Margem</th>
       <th class="num">Anúncio</th><th></th>
     </tr></thead>
@@ -2270,6 +2315,9 @@ function renderTable(){
 
   pidEmDestaque = null;   // a tabela é nova: nenhum produto aceso
   observarFimDaTabela();
+  const todos = document.getElementById('selTodos');
+  if(todos) todos.checked = linhas.length > 0 && linhas.every(x=> selecaoLote.has(x.prod.id));
+  renderBarraLote();
 }
 
 // Tabela agrupada: as colunas do produto (SKU, nome, custo, ações) ocupam as linhas de todos os
@@ -2278,7 +2326,7 @@ function htmlDoProdutoNaTabela({prod, ans}){
     const tags = prod.costOverride ? ' <span class="tag">custo alterado</span>' : '';
     const n = Math.max(ans.length, 1);
     const colProduto = `<td class="cell-prod grp" rowspan="${n}" data-pid="${esc(prod.id)}" title="${esc(prod.sku)} -- ${esc(prod.name)}">
-        <span class="sku">${esc(prod.sku)}</span>${tags}
+        <input type="checkbox" class="sel-prod" data-sel="${esc(prod.id)}" title="Selecionar para editar em lote" ${selecaoLote.has(prod.id) ? 'checked' : ''}><span class="sku">${esc(prod.sku)}</span>${tags}
         <span class="nm">${esc(prod.name)}</span></td>
       <td class="num grp" rowspan="${n}" data-pid="${esc(prod.id)}">${brl(prod.cogs)}</td>`;
     const colAcoes = `<td class="row-actions grp" rowspan="${n}"><button class="iconbtn" data-edit="${esc(prod.id)}" title="Editar produto e preços"><svg class="ic"><use href="#i-pencil"/></svg></button><button class="iconbtn danger" data-del="${esc(prod.id)}" title="Excluir produto"><svg class="ic"><use href="#i-trash"/></svg></button></td>`;
@@ -2354,6 +2402,19 @@ let pidEmDestaque = null;
   const wrap = document.getElementById('tableWrap');
   wrap.addEventListener('click', (e)=>{
     if(e.target.closest('#btnMaisProdutos')){ mostrarMaisProdutos(); return; }
+    // seleção para o editor em lote: não mexe no anúncio selecionado do recibo
+    if(e.target.classList.contains('sel-prod')){
+      const pid = e.target.dataset.sel;
+      if(e.target.checked) selecaoLote.add(pid); else selecaoLote.delete(pid);
+      renderBarraLote();
+      return;
+    }
+    if(e.target.id === 'selTodos'){
+      tabelaLinhas.forEach(x=>{ if(e.target.checked) selecaoLote.add(x.prod.id); else selecaoLote.delete(x.prod.id); });
+      wrap.querySelectorAll('.sel-prod').forEach(c=> c.checked = e.target.checked);
+      renderBarraLote();
+      return;
+    }
     const editar = e.target.closest('[data-edit]');
     if(editar){ openSkuForm(editar.dataset.edit); return; }
     const excluir = e.target.closest('[data-del]');
@@ -2773,6 +2834,503 @@ document.addEventListener('keydown', (e)=>{
   }
 });
 
+// ---------- EDITOR EM LOTE ----------
+// Uma grade: uma linha por produto, uma coluna por marketplace. Serve para cadastrar vários
+// produtos de uma vez (cola os SKUs, um por linha) e para mexer em vários produtos que já existem
+// (selecionados na tabela). "Preencher todos" aplica custo, preço/margem e o modo em todas as
+// linhas; colar do Excel preenche várias linhas de uma vez; Enter desce para a linha de baixo.
+let lote = null;
+
+function celulaDoAnuncio(lst){
+  return {ativo:true, lid: lst.id, mode: lst.mode, price: lst.price, marginTarget: lst.marginTarget};
+}
+function celulaNova(){ return {ativo:true, lid:null, mode:'margin', price:null, marginTarget:null}; }
+function linhaDoProduto(prod){
+  const canais = {};
+  prod.listings.forEach(l=>{ if(!canais[l.marketplaceId]) canais[l.marketplaceId] = celulaDoAnuncio(l); });
+  return {chave: 'r' + novoId(), pid: prod.id, sku: prod.sku, name: prod.name, cogs: prod.cogs, canais,
+    original: JSON.parse(JSON.stringify({name: prod.name, cogs: prod.cogs, canais}))};
+}
+function linhaNova(sku){
+  const canais = {};
+  lote.mids.forEach(mid=> canais[mid] = celulaNova());
+  return {chave: 'r' + novoId(), pid: null, sku, name: '', cogs: null, canais, original: null};
+}
+// mesma regra do resto do sistema: produto é o mesmo quando o SKU sem o "-ID" do marketplace bate
+function produtoPeloSku(sku){
+  const b = baseDoSku(sku).toLowerCase();
+  return state.products.find(p=> baseDoSku(p.sku).toLowerCase() === b) || null;
+}
+
+function abrirLote(pids){
+  if(!fecharTudoDoPainel()) return;
+  const existentes = (pids || []).map(produtoPorId).filter(Boolean);
+  let mids;
+  if(existentes.length){
+    const usados = new Set();
+    existentes.forEach(p=> p.listings.forEach(l=> usados.add(l.marketplaceId)));
+    mids = state.profiles.map(p=> p.id).filter(id=> usados.has(id));
+  } else {
+    mids = [];
+  }
+  lote = {mids, linhas: existentes.map(linhaDoProduto), sujo: false, preencher: {}};
+  const box = document.getElementById('loteWizard');
+  box.style.display = 'block';
+  document.getElementById('panel').classList.add('larga');
+  abrirPainel(existentes.length ? `Editar ${existentes.length} produto(s) em lote` : 'Cadastro em lote',
+    'Uma linha por produto, uma coluna por marketplace. "Preencher todos" aplica em todas as linhas; colar do Excel preenche várias linhas; Enter desce.');
+  desenharLote();
+  if(!existentes.length) setTimeout(()=>{ const t = document.getElementById('lt_skus'); if(t) t.focus(); }, 50);
+}
+
+// Fechar com algo digitado e não salvo pergunta antes. Devolve false se a pessoa quis ficar.
+function closeLoteWizard(){
+  const box = document.getElementById('loteWizard');
+  if(box.style.display !== 'block') return true;
+  if(lote && lote.sujo && !confirm('Fechar o editor em lote sem salvar? O que foi preenchido nele se perde.')) return false;
+  lote = null;
+  box.style.display = 'none';
+  box.innerHTML = '';
+  document.getElementById('panel').classList.remove('larga');
+  if(!wizardVisivel()) fecharPainel();
+  return true;
+}
+
+// número digitado ("49,90", "49.90", "") -> número ou null
+function numLote(v){
+  if(v === null || v === undefined || String(v).trim() === '') return null;
+  const n = parseNumberBR(v);
+  return isNaN(n) ? null : n;
+}
+function valorDaCelula(c){ return c.mode === 'margin' ? c.marginTarget : c.price; }
+function fmtCampo(v){ return (v === null || v === undefined) ? '' : String(round2(v)).replace('.', ','); }
+
+// custos do produto da linha: os do produto (se existe) ou os padrões da empresa
+function produtoDaLinha(r){
+  const p = r.pid ? produtoPorId(r.pid) : null;
+  const base = p || {costOverride:false, fixedCost: state.padroes.fixedCost, misc: state.padroes.misc,
+    taxPct: state.padroes.taxPct, marketingPct: state.padroes.marketingPct};
+  return {id: r.pid || 'novo', sku: r.sku, name: r.name, cogs: r.cogs || 0, costOverride: base.costOverride,
+    fixedCost: base.costOverride ? base.fixedCost : state.padroes.fixedCost,
+    misc: base.costOverride ? base.misc : state.padroes.misc,
+    taxPct: base.costOverride ? base.taxPct : state.padroes.taxPct,
+    marketingPct: base.costOverride ? base.marketingPct : state.padroes.marketingPct};
+}
+function calcDaCelula(r, mid){
+  const c = r.canais[mid];
+  if(!c || !c.ativo || valorDaCelula(c) === null) return null;
+  const lstAtual = c.lid && r.pid ? (anuncioPorId(c.lid) || {}).lst : null;
+  const lst = {id: c.lid || 'rascunho', marketplaceId: mid, sku: '', mode: c.mode,
+    price: c.price || 0, marginTarget: c.marginTarget || 0,
+    coupon: lstAtual ? lstAtual.coupon : state.padroes.coupon,
+    freightNet: lstAtual ? lstAtual.freightNet : state.padroes.freightNet,
+    mktFixedFee: lstAtual ? lstAtual.mktFixedFee : 0};
+  return calcSku(profileOf(mid), visaoDoAnuncio(produtoDaLinha(r), lst));
+}
+function htmlResultado(r, mid){
+  const c = r.canais[mid];
+  if(!c || !c.ativo) return '<span class="muted">não vende</span>';
+  const res = calcDaCelula(r, mid);
+  if(!res) return '<span class="muted">preencha</span>';
+  if(res.error) return '<span class="neg">inviável</span>';
+  return c.mode === 'margin'
+    ? `<b>${brl(res.price)}</b> <span class="muted">recebe ${brl(res.netMarketplace)}</span>`
+    : `<b class="${res.marginPct >= 0 ? 'pos' : 'neg'}">${pct(res.marginPct)}</b> <span class="muted">recebe ${brl(res.netMarketplace)}</span>`;
+}
+
+function desenharLote(){
+  const box = document.getElementById('loteWizard');
+  const perfis = lote.mids.map(profileOf);
+  const temNovas = lote.linhas.some(r=> !r.pid);
+  const cabMkt = perfis.map(p=> `<th class="lt-mkt" data-mid="${esc(p.id)}"><span class="mkt-dot" style="background:${esc(p.color)}"></span>${esc(p.label)}</th>`).join('');
+  const pre = lote.preencher;
+  const preMkt = perfis.map(p=>{
+    const f = pre[p.id] || {};
+    return `<th class="lt-pre" data-mid="${esc(p.id)}">
+      <div class="lt-cel">
+        <input type="checkbox" class="lt-pre-ativo" title="Vender (marcado) ou não vender (desmarcado) neste marketplace em todas as linhas" checked>
+        <select class="lt-pre-modo"><option value="margin"${f.mode !== 'price' ? ' selected' : ''}>Margem %</option><option value="price"${f.mode === 'price' ? ' selected' : ''}>Preço R$</option></select>
+        <input type="text" inputmode="decimal" class="lt-pre-valor" placeholder="valor" value="${esc(f.valor || '')}">
+      </div>
+      <button class="btn small lt-pre-aplicar" type="button" title="Aplica o modo e o valor em todas as linhas que vendem neste marketplace. Valor vazio = só troca o modo, mantendo o preço de hoje.">Aplicar em todos</button>
+    </th>`;
+  }).join('');
+  const linhas = lote.linhas.map((r, i)=>{
+    const existe = !!r.pid;
+    const celulas = perfis.map(p=>{
+      const c = r.canais[p.id];
+      const ativo = c && c.ativo;
+      const modo = c ? c.mode : 'margin';
+      return `<td class="lt-c${ativo ? '' : ' off'}" data-mid="${esc(p.id)}">
+        <div class="lt-cel">
+          <input type="checkbox" class="lt-ativo" ${ativo ? 'checked' : ''} title="Vende neste marketplace">
+          <select class="lt-modo" ${ativo ? '' : 'disabled'}><option value="margin"${modo === 'margin' ? ' selected' : ''}>Margem %</option><option value="price"${modo === 'price' ? ' selected' : ''}>Preço R$</option></select>
+          <input type="text" inputmode="decimal" class="lt-in lt-valor" data-col="v:${esc(p.id)}" value="${esc(c ? fmtCampo(valorDaCelula(c)) : '')}" ${ativo ? '' : 'disabled'}>
+        </div>
+        <div class="lt-res">${htmlResultado(r, p.id)}</div>
+      </td>`;
+    }).join('');
+    return `<tr data-chave="${esc(r.chave)}" data-i="${i}">
+      <td class="lt-sku">${existe ? `<span class="sku">${esc(r.sku)}</span><span class="tag">existente</span>`
+        : `<input type="text" class="lt-in" data-col="sku" value="${esc(r.sku)}">`}</td>
+      <td><input type="text" class="lt-in lt-nome" data-col="name" value="${esc(r.name)}" placeholder="Nome do produto"></td>
+      <td><input type="text" inputmode="decimal" class="lt-in lt-num" data-col="cogs" value="${esc(fmtCampo(r.cogs))}" placeholder="0,00"></td>
+      ${celulas}
+      <td class="lt-x">${existe ? '' : '<button class="iconbtn danger" type="button" data-tirar title="Tirar esta linha"><svg class="ic"><use href="#i-x"/></svg></button>'}</td>
+    </tr>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="lt-topo">
+      <div class="lt-add">
+        <label class="lt-rot">SKUs para ${lote.linhas.length ? 'acrescentar' : 'cadastrar'} <span class="hint">um por linha; pode colar do Excel. Pode vir "SKU [tab] nome [tab] custo". SKU que já existe entra como "existente", para editar.</span></label>
+        <textarea id="lt_skus" rows="${lote.linhas.length ? 2 : 6}" placeholder="03-08-10&#10;03-08-11&#10;03-08-12"></textarea>
+        <button class="btn" type="button" id="lt_addBtn">Acrescentar à lista</button>
+      </div>
+      <div class="lt-mkts">
+        <span class="lt-rot">Marketplaces que vão trabalhar</span>
+        <div class="mkt-checks">${state.profiles.map(p=> `<label class="mkt-check"><input type="checkbox" class="lt-mktchk" value="${esc(p.id)}" ${lote.mids.includes(p.id) ? 'checked' : ''}><span class="mkt-dot" style="background:${esc(p.color)}"></span>${esc(p.label)}</label>`).join('')}</div>
+        <span class="hint">Marcar acrescenta a coluna e liga o marketplace nos produtos novos. Desmarcar só esconde a coluna: nenhum anúncio é apagado por isso.</span>
+      </div>
+    </div>
+    ${lote.linhas.length ? `
+    <div class="lt-wrap">
+      <table class="lt">
+        <thead>
+          <tr><th>SKU</th><th>Nome</th><th>Custo (CMV)</th>${cabMkt}<th></th></tr>
+          <tr class="lt-prelinha">
+            <th class="lt-pre-rot">Preencher todos</th>
+            <th></th>
+            <th class="lt-pre"><div class="lt-cel"><input type="text" inputmode="decimal" id="lt_preCusto" placeholder="custo" value="${esc(pre.custo || '')}"></div><button class="btn small" type="button" id="lt_preCustoBtn">Aplicar em todos</button></th>
+            ${preMkt}<th></th>
+          </tr>
+        </thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+    <p class="lt-status" id="lt_status"></p>
+    <div class="form-actions">
+      <button class="btn primary" type="button" id="lt_salvar">${temNovas && lote.linhas.some(r=> r.pid) ? 'Salvar tudo' : (temNovas ? 'Cadastrar ' + lote.linhas.length + ' produto(s)' : 'Salvar alterações')}</button>
+      <button class="btn" type="button" id="lt_cancelar">Cancelar</button>
+    </div>` : `<div class="form-actions"><button class="btn" type="button" id="lt_cancelar">Cancelar</button></div>`}
+  `;
+  ligarLote();
+  atualizaStatusLote();
+}
+
+function acrescentarSkus(texto){
+  const linhas = String(texto || '').split(/\r?\n/).map(l=> l.split('\t').map(c=> c.trim())).filter(c=> c[0]);
+  if(!linhas.length){ toast('Cole ao menos um SKU.', 'err'); return; }
+  if(!lote.mids.length && linhas.length){
+    // sem marketplace escolhido ainda: começa pelos que já têm anúncio (ou o primeiro cadastrado)
+    const usados = state.profiles.filter(p=> listagens().some(v=> v.marketplaceId === p.id)).map(p=> p.id);
+    lote.mids = usados.length ? usados : [state.profiles[0].id];
+  }
+  const naLista = new Set(lote.linhas.map(r=> baseDoSku(r.sku).toLowerCase()));
+  let novos = 0, existentes = 0, repetidos = 0;
+  linhas.forEach(([sku, nome, custo])=>{
+    const k = baseDoSku(sku).toLowerCase();
+    if(naLista.has(k)){ repetidos++; return; }
+    naLista.add(k);
+    const prod = produtoPeloSku(sku);
+    let r;
+    if(prod){ r = linhaDoProduto(prod); existentes++; }
+    else { r = linhaNova(baseDoSku(sku)); novos++; }
+    if(nome) r.name = nome;
+    if(custo !== undefined && numLote(custo) !== null) r.cogs = numLote(custo);
+    lote.linhas.push(r);
+  });
+  lote.sujo = true;
+  desenharLote();
+  toast(`${novos} novo(s)` + (existentes ? `, ${existentes} já existente(s) (entram para edição)` : '') + (repetidos ? `, ${repetidos} repetido(s) ignorado(s)` : '') + '.', 'ok', 'Lista montada');
+  const primeiro = document.querySelector('#loteWizard tbody .lt-nome');
+  if(primeiro && !primeiro.value) primeiro.focus();
+}
+
+// trocar Preço <-> Margem sem mudar o resultado: a margem passa a ser a de hoje (ou o preço, o de hoje)
+function trocarModo(r, mid, novo){
+  const c = r.canais[mid];
+  if(!c || c.mode === novo) return;
+  const res = calcDaCelula(r, mid);
+  if(res && !res.error){
+    if(novo === 'margin') c.marginTarget = res.marginOnNet;   // sem arredondar: o preço fica idêntico ao de hoje (a tela mostra 2 casas)
+    else c.price = round2(res.price);
+  }
+  c.mode = novo;
+}
+
+function ligarLote(){
+  const box = document.getElementById('loteWizard');
+  const addBtn = document.getElementById('lt_addBtn');
+  addBtn.onclick = ()=> acrescentarSkus(document.getElementById('lt_skus').value);
+  document.getElementById('lt_skus').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); addBtn.click(); }
+  });
+  document.getElementById('lt_cancelar').onclick = ()=>{ if(closeLoteWizard()) {} };
+  box.querySelectorAll('.lt-mktchk').forEach(ch=> ch.onchange = ()=>{
+    const mid = ch.value;
+    if(ch.checked){
+      lote.mids = state.profiles.map(p=> p.id).filter(id=> id === mid || lote.mids.includes(id));
+      lote.linhas.forEach(r=>{ if(!r.pid && !r.canais[mid]) r.canais[mid] = celulaNova(); });
+    } else {
+      lote.mids = lote.mids.filter(id=> id !== mid);
+    }
+    desenharLote();
+  });
+  const salvar = document.getElementById('lt_salvar');
+  if(!salvar) return;
+  salvar.onclick = salvarLote;
+
+  const tabela = box.querySelector('table.lt');
+  const linhaDe = el=> lote.linhas[Number(el.closest('tr').dataset.i)];
+  const atualizaLinha = tr=>{
+    const r = lote.linhas[Number(tr.dataset.i)];
+    tr.querySelectorAll('td.lt-c').forEach(td=> td.querySelector('.lt-res').innerHTML = htmlResultado(r, td.dataset.mid));
+  };
+
+  tabela.addEventListener('input', (e)=>{
+    const inp = e.target;
+    if(!inp.classList.contains('lt-in')) return;
+    const r = linhaDe(inp), col = inp.dataset.col;
+    if(col === 'sku') r.sku = inp.value.trim();
+    else if(col === 'name') r.name = inp.value;
+    else if(col === 'cogs') r.cogs = numLote(inp.value);
+    else if(col.startsWith('v:')){
+      const c = r.canais[col.slice(2)];
+      if(!c) return;
+      if(c.mode === 'margin') c.marginTarget = numLote(inp.value); else c.price = numLote(inp.value);
+    }
+    lote.sujo = true;
+    atualizaLinha(inp.closest('tr'));
+    atualizaStatusLote();
+  });
+  tabela.addEventListener('change', (e)=>{
+    const el = e.target;
+    const td = el.closest('td.lt-c');
+    if(!td) return;
+    const r = linhaDe(el), mid = td.dataset.mid;
+    if(!r.canais[mid] && !el.classList.contains('lt-ativo')) return;
+    if(el.classList.contains('lt-ativo')){
+      if(!r.canais[mid]) r.canais[mid] = celulaNova();
+      r.canais[mid].ativo = el.checked;
+      td.classList.toggle('off', !el.checked);
+      td.querySelector('.lt-modo').disabled = !el.checked;
+      td.querySelector('.lt-valor').disabled = !el.checked;
+    } else if(el.classList.contains('lt-modo')){
+      trocarModo(r, mid, el.value);
+      td.querySelector('.lt-valor').value = fmtCampo(valorDaCelula(r.canais[mid]));
+    } else return;
+    lote.sujo = true;
+    atualizaLinha(el.closest('tr'));
+    atualizaStatusLote();
+  });
+  tabela.addEventListener('click', (e)=>{
+    if(e.target.closest('[data-tirar]')){
+      const i = Number(e.target.closest('tr').dataset.i);
+      lote.linhas.splice(i, 1);
+      desenharLote();
+      return;
+    }
+    const aplicar = e.target.closest('.lt-pre-aplicar');
+    if(aplicar){
+      const th = aplicar.closest('th'), mid = th.dataset.mid;
+      const ativo = th.querySelector('.lt-pre-ativo').checked;
+      const modo = th.querySelector('.lt-pre-modo').value;
+      const txt = th.querySelector('.lt-pre-valor').value;
+      const valor = numLote(txt);
+      if(txt.trim() && valor === null){ toast('Valor inválido.', 'err'); return; }
+      lote.preencher[mid] = {mode: modo, valor: txt};
+      let n = 0;
+      lote.linhas.forEach(r=>{
+        if(!ativo){ if(r.canais[mid]){ r.canais[mid].ativo = false; n++; } return; }
+        if(!r.canais[mid]) r.canais[mid] = celulaNova();
+        const c = r.canais[mid];
+        c.ativo = true;
+        trocarModo(r, mid, modo);
+        if(valor !== null){ if(modo === 'margin') c.marginTarget = valor; else c.price = valor; }
+        n++;
+      });
+      lote.sujo = true;
+      desenharLote();
+      toast(ativo ? `${profileOf(mid).label}: ${modo === 'margin' ? 'margem' : 'preço'}${valor !== null ? ' ' + txt : ' (mantendo o preço de hoje)'} em ${n} linha(s).` : `${profileOf(mid).label} desligado em ${n} linha(s).`, 'ok');
+      return;
+    }
+    if(e.target.closest('#lt_preCustoBtn')){
+      const txt = document.getElementById('lt_preCusto').value;
+      const v = numLote(txt);
+      if(v === null){ toast('Digite o custo para aplicar.', 'err'); return; }
+      lote.preencher.custo = txt;
+      lote.linhas.forEach(r=> r.cogs = v);
+      lote.sujo = true;
+      desenharLote();
+    }
+  });
+  // Enter desce para a mesma coluna na linha de baixo, como no Excel
+  tabela.addEventListener('keydown', (e)=>{
+    if(e.key !== 'Enter' || !e.target.classList.contains('lt-in')) return;
+    e.preventDefault();
+    const tr = e.target.closest('tr');
+    const prox = (e.shiftKey ? tr.previousElementSibling : tr.nextElementSibling);
+    const alvo = prox && prox.querySelector(`[data-col="${CSS.escape(e.target.dataset.col)}"]:not(:disabled)`);
+    if(alvo){ alvo.focus(); alvo.select(); }
+  });
+  // Colar várias linhas (e colunas) do Excel: preenche a partir da célula onde se colou
+  tabela.addEventListener('paste', (e)=>{
+    const inp = e.target;
+    if(!inp.classList.contains('lt-in')) return;
+    const texto = (e.clipboardData || window.clipboardData).getData('text');
+    if(!/[\t\n]/.test(texto.replace(/\r?\n$/, ''))) return;   // um valor só: colagem normal
+    e.preventDefault();
+    const grade = texto.replace(/\r?\n$/, '').split(/\r?\n/).map(l=> l.split('\t'));
+    const trs = [...tabela.querySelectorAll('tbody tr')];
+    const i0 = trs.indexOf(inp.closest('tr'));
+    grade.forEach((vals, di)=>{
+      const tr = trs[i0 + di];
+      if(!tr) return;
+      const campos = [...tr.querySelectorAll('.lt-in')];
+      const j0 = [...inp.closest('tr').querySelectorAll('.lt-in')].indexOf(inp);
+      vals.forEach((v, dj)=>{
+        const alvo = campos[j0 + dj];
+        if(!alvo || alvo.disabled) return;
+        alvo.value = v.trim();
+        alvo.dispatchEvent(new Event('input', {bubbles:true}));
+      });
+    });
+    const sobra = grade.length - (trs.length - i0);
+    if(sobra > 0) toast(`${sobra} linha(s) coladas a mais que a lista. Para cadastrar mais produtos, cole os SKUs no quadro de cima.`, 'warn');
+  });
+}
+
+// O que falta para salvar, contado ao vivo
+function problemasDoLote(){
+  const erros = [];
+  const skus = new Map();
+  lote.linhas.forEach(r=>{
+    const quem = r.sku || '(sem SKU)';
+    if(!r.pid){
+      if(!r.sku) erros.push({r, msg: 'linha sem SKU'});
+      else {
+        const k = baseDoSku(r.sku).toLowerCase();
+        if(skus.has(k)) erros.push({r, msg: `${quem}: repetido na lista`});
+        skus.set(k, true);
+        const outro = produtoPeloSku(r.sku);
+        if(outro) erros.push({r, msg: `${quem}: já existe (${outro.name}). Tire a linha e acrescente o SKU de novo para editá-lo`});
+      }
+      if(!r.name.trim()) erros.push({r, msg: `${quem}: sem nome`});
+      if(r.cogs === null) erros.push({r, msg: `${quem}: sem custo`});
+    }
+    // colunas escondidas não contam: nelas nada é criado nem mudado
+    const ativos = Object.keys(r.canais).filter(mid=> r.canais[mid].ativo && lote.mids.includes(mid));
+    if(!r.pid && !ativos.length) erros.push({r, msg: `${quem}: nenhum marketplace marcado`});
+    ativos.forEach(mid=>{
+      const c = r.canais[mid];
+      if(valorDaCelula(c) === null) erros.push({r, msg: `${quem}: falta ${c.mode === 'margin' ? 'a margem' : 'o preço'} em ${profileOf(mid).label}`});
+    });
+  });
+  return erros;
+}
+function atualizaStatusLote(){
+  const st = document.getElementById('lt_status');
+  if(!st) return;
+  const erros = problemasDoLote();
+  document.querySelectorAll('#loteWizard tbody tr').forEach(tr=> tr.classList.remove('lt-erro'));
+  const chaves = new Set(erros.map(x=> x.r.chave));
+  document.querySelectorAll('#loteWizard tbody tr').forEach(tr=>{ if(chaves.has(tr.dataset.chave)) tr.classList.add('lt-erro'); });
+  const novos = lote.linhas.filter(r=> !r.pid).length, exist = lote.linhas.length - novos;
+  st.innerHTML = (erros.length
+    ? `<span class="neg">Falta resolver ${erros.length} item(ns):</span> ${erros.slice(0, 4).map(x=> esc(x.msg)).join(' &middot; ')}${erros.length > 4 ? ' &middot; ...' : ''}`
+    : `<span class="pos">Pronto para salvar.</span>`) + ` <span class="muted">${novos} novo(s), ${exist} existente(s).</span>`;
+}
+
+function salvarLote(){
+  const erros = problemasDoLote();
+  if(erros.length){ toast(erros.slice(0, 3).map(x=> x.msg).join(' · '), 'err', 'Confira as linhas marcadas'); atualizaStatusLote(); return; }
+  // anúncios que existiam e foram desmarcados: pergunta antes de apagar
+  const removidos = [];
+  lote.linhas.forEach(r=>{
+    if(!r.pid) return;
+    Object.keys(r.original.canais).forEach(mid=>{ if(r.canais[mid] && !r.canais[mid].ativo) removidos.push(`${r.sku} em ${profileOf(mid).label}`); });
+  });
+  if(removidos.length && !confirm(`Remover ${removidos.length} anúncio(s)?\n\n${removidos.slice(0, 12).join('\n')}${removidos.length > 12 ? '\n...' : ''}`)) return;
+
+  const muda = (a, b)=> canon(a) !== canon(b);
+  let criados = 0, anunciosNovos = 0, alterados = 0;
+  lote.linhas.forEach(r=>{
+    const ativos = Object.keys(r.canais).filter(mid=> r.canais[mid].ativo && lote.mids.includes(mid) && !profileOf(mid).missing);
+    if(!r.pid){
+      const listings = ativos.map(mid=>{
+        const c = r.canais[mid];
+        return normalizeListing({id: novoId(), marketplaceId: mid, sku: applyMktSuffix(r.sku, mid), mode: c.mode,
+          price: c.mode === 'price' ? c.price : (c.price || 0), marginTarget: c.mode === 'margin' ? c.marginTarget : (c.marginTarget || 20),
+          coupon: state.padroes.coupon, freightNet: state.padroes.freightNet, mktFixedFee: 0});
+      });
+      state.products.push(normalizeProduct({id: 'p_' + novoId(), sku: r.sku, name: r.name.trim(), cogs: r.cogs, costOverride: false,
+        fixedCost: state.padroes.fixedCost, misc: state.padroes.misc, taxPct: state.padroes.taxPct, marketingPct: state.padroes.marketingPct,
+        listings}));
+      criados++; anunciosNovos += listings.length;
+      return;
+    }
+    // produto existente: grava só o que foi mudado aqui (o resto pode ter sido salvo por outra pessoa)
+    const prod = produtoPorId(r.pid);
+    if(!prod) return;
+    let mexeu = false;
+    if(muda(r.name, r.original.name) && r.name.trim()){ prod.name = r.name.trim(); mexeu = true; }
+    if(muda(r.cogs, r.original.cogs) && r.cogs !== null){ prod.cogs = r.cogs; mexeu = true; }
+    Object.keys(r.canais).forEach(mid=>{
+      const c = r.canais[mid], o = r.original.canais[mid];
+      const atual = prod.listings.find(l=> (c.lid && l.id === c.lid)) || prod.listings.find(l=> l.marketplaceId === mid);
+      if(o && !c.ativo){
+        if(atual){ prod.listings = prod.listings.filter(l=> l !== atual); mexeu = true; }
+        return;
+      }
+      if(!c.ativo) return;
+      if(!atual){
+        prod.listings.push(normalizeListing({id: novoId(), marketplaceId: mid, sku: applyMktSuffix(prod.sku, mid), mode: c.mode,
+          price: c.price || 0, marginTarget: c.marginTarget === null ? 20 : c.marginTarget,
+          coupon: state.padroes.coupon, freightNet: state.padroes.freightNet, mktFixedFee: 0}));
+        anunciosNovos++; mexeu = true;
+        return;
+      }
+      ['mode','price','marginTarget'].forEach(k=>{
+        if(c[k] === null || c[k] === undefined) return;
+        if(!o || muda(c[k], o[k])){ if(muda(atual[k], c[k])){ atual[k] = c[k]; mexeu = true; } }
+      });
+    });
+    if(mexeu) alterados++;
+  });
+  if(!anuncioPorId(state.selectedSkuId)){
+    const primeiro = state.products.find(p=> p.listings.length);
+    state.selectedSkuId = primeiro ? primeiro.listings[0].id : null;
+  }
+  selecaoLote.clear();
+  saveState();
+  lote.sujo = false;
+  closeLoteWizard();
+  renderProdutos();
+  const partes = [criados ? `${criados} produto(s) cadastrado(s)` : '', anunciosNovos ? `${anunciosNovos} anúncio(s) novo(s)` : '', alterados ? `${alterados} produto(s) alterado(s)` : ''].filter(Boolean);
+  toast(partes.length ? partes.join(', ') + '.' : 'Nada mudou.', 'ok', 'Lote salvo');
+}
+
+// ---------- seleção de produtos na tabela ----------
+const selecaoLote = new Set();
+function renderBarraLote(){
+  const bar = document.getElementById('loteBar');
+  if(!bar) return;
+  // produto excluído (aqui ou por outra pessoa) sai da seleção
+  [...selecaoLote].forEach(pid=>{ if(!produtoPorId(pid)) selecaoLote.delete(pid); });
+  if(!selecaoLote.size){ bar.hidden = true; return; }
+  bar.hidden = false;
+  bar.innerHTML = `<b>${selecaoLote.size}</b> produto(s) selecionado(s)
+    <button class="btn small primary" type="button" id="loteEditarSel">Editar em lote</button>
+    <button class="btn small" type="button" id="loteLimparSel">Limpar seleção</button>`;
+  document.getElementById('loteEditarSel').onclick = ()=> abrirLote([...selecaoLote]);
+  document.getElementById('loteLimparSel').onclick = ()=>{
+    selecaoLote.clear();
+    document.querySelectorAll('#tableWrap .sel-prod, #selTodos').forEach(c=> c.checked = false);
+    renderBarraLote();
+  };
+}
+
 // ---------- EXPORTAÇÃO DE PLANILHA ----------
 function closeExportWizard(){
   document.getElementById('exportWizard').style.display='none';
@@ -2825,7 +3383,7 @@ function abrirExportEdicao(){
   openMarketplacePicker(
     'Exportar planilha de edição em massa',
     'Gera uma planilha com os campos editáveis de cada produto (não os valores calculados). Edite no Excel/Sheets e reimporte pela opção "Importar planilha" -- escolhendo "sobrescrever" -- para atualizar tudo de uma vez.',
-    'Exportar para edição (.csv)',
+    'Exportar para edição (.xlsx)',
     exportEditSpreadsheet
   );
 };
@@ -2874,7 +3432,7 @@ function exportEditSpreadsheet(marketplaceIds){
   const chosenSet = new Set(marketplaceIds);
   const rows = listagens().filter(s => chosenSet.has(s.marketplaceId));
   if(rows.length === 0){ toast('Nenhum produto cadastrado nos marketplaces selecionados.', 'err'); return; }
-  const numBR = v => FMT_NUM2.format(round2(v));
+  const num = v => round2(v);
   const header = ['SKU do Produto','SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda','Margem Desejada (%)',
     'Cupom','Frete Líquido','Taxa Fixa do Anúncio',
     'Custo Fixo (só se custo alterado)','Outros Custos (só se custo alterado)','Imposto % (só se custo alterado)','Marketing % (só se custo alterado)'];
@@ -2883,25 +3441,51 @@ function exportEditSpreadsheet(marketplaceIds){
     const p = profileOf(sku.marketplaceId);
     data.push([
       sku.productSku, sku.sku, sku.name, p.label,
-      numBR(sku.cogs),
-      sku.mode==='price' ? numBR(sku.price) : '',
-      sku.mode==='margin' ? numBR(sku.marginTarget) : '',
-      numBR(sku.coupon), numBR(sku.freightNet),
-      p.variableFixedFee ? numBR(sku.mktFixedFee) : '',
-      sku.costOverride ? numBR(sku.fixedCost) : '',
-      sku.costOverride ? numBR(sku.misc) : '',
-      sku.costOverride ? numBR(sku.taxPct) : '',
-      sku.costOverride ? numBR(sku.marketingPct) : ''
+      num(sku.cogs),
+      sku.mode==='price' ? num(sku.price) : '',
+      sku.mode==='margin' ? Math.round(sku.marginTarget * 1e6) / 1e6 : '',   // margem exata: arredondar mudaria o preço em centavos na volta
+      num(sku.coupon), num(sku.freightNet),
+      p.variableFixedFee ? num(sku.mktFixedFee) : '',
+      sku.costOverride ? num(sku.fixedCost) : '',
+      sku.costOverride ? num(sku.misc) : '',
+      sku.costOverride ? num(sku.taxPct) : '',
+      sku.costOverride ? num(sku.marketingPct) : ''
     ]);
   });
-  const csv = '\uFEFF' + data.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')).join('\r\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0,10);
-  a.href = url; a.download = `edicao-em-massa-${stamp}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  baixarPlanilhaXlsx(`edicao-em-massa-${stamp}.xlsx`, 'Edição em massa', data, [0, 1, 2, 3],
+    [16, 22, 34, 16, 12, 12, 12, 9, 10, 12, 14, 14, 14, 14]);
+}
+
+// Planilha .xlsx com as colunas de texto (SKU, nome, marketplace) gravadas como TEXTO. Num CSV o
+// Excel adivinha o tipo de cada célula, e um SKU como 03-08-10 virava a data 03/08/2010. Além das
+// linhas preenchidas, 1000 linhas vazias já vêm com essas colunas em texto, para o SKU digitado
+// depois também não virar data. Números vão como número, com duas casas.
+function baixarPlanilhaXlsx(nomeArquivo, nomeAba, linhas, colunasTexto, larguras){
+  return carregarXLSX().then(XLSX=>{
+    const ws = XLSX.utils.aoa_to_sheet(linhas);
+    const ultima = linhas.length - 1 + 1000;
+    const nCols = linhas[0].length;
+    for(let r = 0; r <= ultima; r++){
+      for(let c = 0; c < nCols; c++){
+        const end = XLSX.utils.encode_cell({r, c});
+        const cel = ws[end];
+        const texto = colunasTexto.indexOf(c) !== -1 || r === 0;
+        if(texto){
+          if(cel){ cel.t = 's'; cel.v = String(cel.v === undefined || cel.v === null ? '' : cel.v); cel.z = '@'; }
+          else if(r >= linhas.length) ws[end] = {t:'s', v:'', z:'@'};
+        } else if(cel && cel.t === 'n'){
+          cel.z = '0.00';
+        }
+      }
+    }
+    ws['!ref'] = XLSX.utils.encode_range({s:{r:0, c:0}, e:{r: ultima, c: nCols - 1}});
+    ws['!cols'] = larguras.map(w=> ({wch: w}));
+    ws['!freeze'] = {xSplit: 0, ySplit: 1};
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, nomeAba.slice(0, 31));
+    XLSX.writeFile(wb, nomeArquivo);
+  }).catch(err=> toast((err && err.message) || String(err), 'err', 'Não foi possível gerar a planilha'));
 }
 
 // ---------- IMPORTAÇÃO EM MASSA ----------
@@ -2973,14 +3557,9 @@ let importState = null; // { headers, rows, mapping, marketplaces, mode, batchVa
 
 function baixarModeloPlanilha(){
   const headers = ['SKU','Nome','Marketplace','Custo do Produto (CMV)','Preço de Venda','Margem Desejada (%)','Cupom','Frete Líquido','Taxa Fixa do Anúncio','Custo Fixo','Outros Custos','Imposto (%)','Marketing (%)'];
-  const example = ['CAM-001','Camiseta básica branca P', (state.profiles[0]||{}).label || 'Shopee','20,00','','30','0','0','','','','',''];
-  const csv = '\uFEFF' + [headers, example].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')).join('\r\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'modelo-importacao-produtos.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  const example = ['03-08-10','Camiseta básica branca P', (state.profiles[0]||{}).label || 'Shopee',20,'',30,0,0,'','','','',''];
+  baixarPlanilhaXlsx('modelo-importacao-produtos.xlsx', 'Produtos', [headers, example], [0, 1, 2],
+    [16, 34, 16, 12, 12, 12, 9, 10, 12, 11, 11, 11, 11]);
 };
 
 function abrirImportacao(){
