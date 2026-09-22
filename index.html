@@ -480,6 +480,19 @@
   .muted{color:var(--ink-mute);}
   .imp-resumo{display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--ink-2);margin-bottom:12px;}
 
+  /* ============ usuários, conflitos e histórico ============ */
+  .userbtn{display:block;margin-top:9px;background:none;border:0;padding:0;font:inherit;font-size:11.5px;
+    color:var(--ink-2);cursor:pointer;text-align:left;}
+  .userbtn:hover{color:var(--ink);text-decoration:underline;}
+  .userbtn.falta{color:var(--warn);}
+  .conf-linha{display:flex;gap:9px;align-items:flex-start;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px;}
+  .conf-txt{flex:1;min-width:220px;line-height:1.5;}
+  .hist-wrap{max-height:480px;overflow:auto;border:1px solid var(--line);border-radius:var(--r);}
+  table.hist{width:100%;border-collapse:collapse;font-size:12px;}
+  table.hist th, table.hist td{padding:6px 9px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:top;}
+  table.hist th{position:sticky;top:0;background:var(--surface-2);font-weight:600;color:var(--ink-2);}
+  table.hist .nowrap{white-space:nowrap;}
+
   /* ============ avisos flutuantes ============ */
   #toasts{position:fixed;right:20px;bottom:20px;z-index:120;display:flex;flex-direction:column;gap:10px;
     max-width:min(400px,calc(100vw - 40px));pointer-events:none;}
@@ -527,6 +540,7 @@
   </div>
   <div class="sidefoot">
     <span class="sync-pill sync-off" id="syncPill"><span class="sdot"></span><span id="syncPillText">Verificando...</span></span>
+    <button class="userbtn" id="usuarioBtn" type="button"></button>
     <p class="hint" id="storageNote" style="margin-top:9px;"></p>
   </div>
 </aside>
@@ -578,11 +592,26 @@
         <h2>Status da conexão</h2>
         <p class="sub" id="syncStatusDetail">Verificando...</p>
         <div class="field textrow"><label>URL do Web App do Google Apps Script</label><input type="text" id="gasUrlInput" style="width:100%;text-align:left;" placeholder="https://script.google.com/macros/s/AAAA.../exec"></div>
+        <div class="field"><label>Seu nome neste dispositivo<span class="hint">Aparece no histórico e nos avisos de conflito, para saber quem mudou o quê.</span></label><input type="text" id="usuarioInput" maxlength="40" style="width:220px;text-align:left;" placeholder="ex.: Arthur"></div>
         <div class="form-actions">
           <button class="btn primary" id="connectBtn">Conectar</button>
           <button class="btn" id="syncNowBtn">Sincronizar agora</button>
           <button class="btn danger" id="disconnectBtn">Desconectar</button>
         </div>
+      </div>
+
+      <div class="card" id="conflitosCard" style="display:none;">
+        <h2>Conflitos juntados</h2>
+        <p class="sub">Itens que você e outra pessoa alteraram ao mesmo tempo. Nada foi descartado: nos campos que os dois mudaram ficou o seu valor, e aqui dá para trocar pelo da outra pessoa.</p>
+        <div id="conflitosLista"></div>
+        <div class="form-actions"><button class="btn small" id="conflitosLimpar">Marcar todos como vistos</button></div>
+      </div>
+
+      <div class="card">
+        <h2>Histórico de alterações</h2>
+        <p class="sub" id="historicoAviso"></p>
+        <input type="text" id="historicoBusca" placeholder="Filtrar por nome, SKU, campo..." style="width:100%;text-align:left;margin:0 0 10px;">
+        <div class="hist-wrap" id="historicoLista"></div>
       </div>
 
       <div class="card">
@@ -613,7 +642,7 @@
 
       <div class="card">
         <h2>Código para colar no Apps Script</h2>
-        <div class="banner" style="margin:12px 0;"><svg class="bi"><use href="#i-warn"/></svg><div>Este é o código <strong>versão 4</strong>: guarda o produto pai com um anúncio por marketplace, as faixas de preço e a taxa fixa por anúncio, trava gravações simultâneas e recusa que um dispositivo desatualizado apague o que outro salvou. A partir desta versão, campos novos no sistema <strong>não exigem republicar</strong> o código. O sistema não grava em planilhas com versão anterior. Se a sua planilha já estava conectada, cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. Sem isso, a taxa fixa por anúncio e as faixas de preço funcionam no navegador mas somem ao sincronizar.</div></div>
+        <div class="banner" style="margin:12px 0;"><svg class="bi"><use href="#i-warn"/></svg><div>Este é o código <strong>versão 5</strong>. Além de tudo da versão 4 (produto pai com um anúncio por marketplace, faixas de preço, trava de gravações simultâneas), ele grava o <strong>histórico de alterações</strong> (aba <code>Historico</code>: quem mudou o quê e quando), percebe quando alguém <strong>edita a planilha à mão</strong> &mdash; e faz os dispositivos lerem e juntarem essa edição antes de gravar, em vez de apagá-la &mdash; e recusa páginas antigas do sistema que ainda estejam abertas em algum computador. A versão 4 continua funcionando, mas sem histórico e sem essa proteção. Para atualizar: cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. A URL continua a mesma.</div></div>
         <div class="form-actions" style="margin:0 0 12px;"><button class="btn small" id="copyCodeBtn">Copiar código</button></div>
         <pre class="codeblock" id="gasCode"></pre>
       </div>
@@ -723,7 +752,7 @@ const PRESETS = [
 
 function defaultState(){
   const profiles = defaultProfiles();
-  return {
+  return normalizeState({
     profiles,
     padroes:{fixedCost:0, misc:0, taxPct:0, marketingPct:0, coupon:0, freightNet:0},
     products:[
@@ -735,7 +764,7 @@ function defaultState(){
        ]}
     ],
     selectedSkuId:'demo1'
-  };
+  });
 }
 
 // ---------- modelo: produto pai com um anúncio por marketplace ----------
@@ -781,6 +810,7 @@ function normalizeListing(l){
   l.marketplaceId = String(l.marketplaceId||'');
   l.sku = String(l.sku||'');
   l.mode = (l.mode === 'margin') ? 'margin' : 'price';
+  l.alteradoPor = String(l.alteradoPor||''); l.alteradoEm = String(l.alteradoEm||'');
   return l;
 }
 function normalizeProduct(p){
@@ -788,6 +818,7 @@ function normalizeProduct(p){
   p.id = String(p.id || ('p_' + novoId()));
   p.sku = String(p.sku||''); p.name = String(p.name||'');
   p.costOverride = toBool(p.costOverride);
+  p.alteradoPor = String(p.alteradoPor||''); p.alteradoEm = String(p.alteradoEm||'');
   if(!Array.isArray(p.listings)) p.listings = [];
   p.listings.forEach(normalizeListing);
   return p;
@@ -844,7 +875,8 @@ function agruparEmProdutos(rows, profiles){
       prod = normalizeProduct({
         id: temProductId ? String(r.productId) : ('p_' + (r.id || novoId())),
         sku: base, name: r.name, cogs: r.cogs, costOverride: r.costOverride,
-        fixedCost: r.fixedCost, misc: r.misc, taxPct: r.taxPct, marketingPct: r.marketingPct, listings: []
+        fixedCost: r.fixedCost, misc: r.misc, taxPct: r.taxPct, marketingPct: r.marketingPct, listings: [],
+        alteradoPor: r.prodAlteradoPor, alteradoEm: r.prodAlteradoEm
       });
       if(!porChave.has(chave)) porChave.set(chave, prod);
       produtos.push(prod);
@@ -853,7 +885,8 @@ function agruparEmProdutos(rows, profiles){
     // linha sem marketplace = produto guardado sem nenhum anúncio
     if(mid) prod.listings.push(normalizeListing({
       id: r.id, marketplaceId: mid, sku: r.sku, mode: r.mode, price: r.price, marginTarget: r.marginTarget,
-      coupon: r.coupon, freightNet: r.freightNet, mktFixedFee: r.mktFixedFee
+      coupon: r.coupon, freightNet: r.freightNet, mktFixedFee: r.mktFixedFee,
+      alteradoPor: r.alteradoPor, alteradoEm: r.alteradoEm
     }));
   });
   let separados = 0;
@@ -864,11 +897,14 @@ function agruparEmProdutos(rows, profiles){
 // Produtos -> linhas planas, uma por anúncio, para a planilha e para o backup legível.
 function achatarProdutos(products){
   const rows = [];
+  const linha = (prod, l)=> Object.assign(visaoDoAnuncio(prod, l), {
+    alteradoPor: l.alteradoPor || '', alteradoEm: l.alteradoEm || '',
+    prodAlteradoPor: prod.alteradoPor || '', prodAlteradoEm: prod.alteradoEm || ''});
   products.forEach(prod=>{
     if(prod.listings.length === 0){
-      rows.push(visaoDoAnuncio(prod, {id:'p0_' + prod.id, marketplaceId:'', sku:prod.sku, mode:'price',
+      rows.push(linha(prod, {id:'p0_' + prod.id, marketplaceId:'', sku:prod.sku, mode:'price',
         price:0, marginTarget:0, coupon:0, freightNet:0, mktFixedFee:0}));
-    } else prod.listings.forEach(l=> rows.push(visaoDoAnuncio(prod, l)));
+    } else prod.listings.forEach(l=> rows.push(linha(prod, l)));
   });
   return rows;
 }
@@ -887,6 +923,13 @@ function normalizeState(s){
     const base = id;
     while(s.profiles.some(x=> x !== pr && x.id === id)) id = base + (n++);
     pr.id = id;
+  });
+  // marketplace sem chave interna ganha "m:" + ID -- todo dispositivo chega na mesma chave
+  const uids = new Set();
+  s.profiles.forEach(pr=>{
+    let u = pr.uid || ('m:' + pr.id);
+    if(uids.has(u)){ let n = 2; while(uids.has(u + '#' + n)) n++; u = u + '#' + n; }
+    uids.add(u); pr.uid = u;
   });
   s.padroes = normalizePadroes(s.padroes || {});
   if(!Array.isArray(s.products)){
@@ -931,13 +974,10 @@ function avisaMigracao(){
 // O que vai para a planilha: a lista de produtos achatada em uma linha por anúncio, com o
 // productId em cada linha para a leitura remontar os produtos exatamente como estavam.
 const CAMPOS_TEXTO_PLANILHA = {
-  Marketplaces: ['id','label','tiers'],
-  Produtos: ['id','productId','productSku','sku','marketplaceId'],
+  Marketplaces: ['id','uid','label','note','color','tiers','alteradoPor','alteradoEm'],
+  Produtos: ['id','productId','productSku','sku','name','marketplaceId','alteradoPor','alteradoEm','prodAlteradoPor','prodAlteradoEm'],
   Padroes: []
 };
-function estadoParaPlanilha(){
-  return {profiles: state.profiles, skus: achatarProdutos(state.products), padroes: state.padroes};
-}
 
 // Navegador em aba anônima ou com dados de site bloqueados lança SecurityError já na LEITURA
 // do localStorage. Sem esta proteção o sistema inteiro morria antes de desenhar a primeira tela.
@@ -956,12 +996,21 @@ let lastSyncOk = null;
 let lastSyncTime = null;
 let lastSyncError = '';
 // Revisão da planilha que este navegador conhece. null = ainda não conseguiu ler nesta sessão,
-// e nesse caso nada é enviado: gravar sem ter lido poderia apagar o que outro dispositivo salvou.
+// e nesse caso nada é enviado antes de ler: gravar sem ter lido poderia apagar o que outra pessoa salvou.
 let revPlanilha = null;
 let versaoScript = null;
 let scriptDesatualizado = false;
 const GAS_VERSAO_MINIMA = 4;
+// Versão desta página, mandada em cada gravação. O Apps Script 5 recusa páginas mais antigas: elas
+// ainda têm o envio sem fila, que gerava conflitos falsos e desfazia alterações.
+const CLIENTE_VERSAO = 5;
 const MSG_SCRIPT_ANTIGO = 'O código do Apps Script na sua planilha está desatualizado: ele não guarda o agrupamento de produtos (produto pai com um anúncio por marketplace), e o descartaria sem avisar. Para não apagar dados, nada foi enviado. Abra a aba Sincronização, copie o código novo, cole no Apps Script e publique uma NOVA VERSÃO da implantação existente (Implantar → Gerenciar implantações → lápis → Nova versão).';
+const BASE_KEY = 'mkt_pricing_base_v1';
+const USUARIO_KEY = 'mkt_pricing_usuario';
+const CONFLITOS_KEY = 'mkt_pricing_conflitos_v1';
+let usuario = store.get(USUARIO_KEY) || '';
+let historicoPlanilha = null;   // últimas linhas da aba Historico (só com Apps Script 5 ou mais novo)
+let conflitosRecentes = (()=>{ try{ return JSON.parse(store.get(CONFLITOS_KEY) || '[]') || []; }catch(e){ return []; } })();
 
 // Avança a cada alteração de dado; o cache de cálculo compara com isto.
 let versaoDados = 0;
@@ -971,53 +1020,564 @@ function saveState(){
   scheduleSync();
 }
 
+// ---------- fila: uma conversa com a planilha por vez ----------
+// Antes, uma alteração feita enquanto o envio anterior ainda estava a caminho disparava um segundo
+// envio com a revisão velha. A planilha recusava esse segundo como se fosse "outro dispositivo", o
+// sistema recarregava tudo e a alteração sumia. Agora cada envio ou leitura espera o anterior terminar.
+let filaSync = Promise.resolve();
+let naFilaAgora = 0;
+function naFila(fn){
+  naFilaAgora++;
+  const p = filaSync.then(fn).finally(()=>{ naFilaAgora--; });
+  filaSync = p.catch(()=>{});
+  return p;
+}
+function syncOcupado(){ return !!syncTimer || naFilaAgora > 0 || syncing; }
+
 function scheduleSync(){
   if(!gasUrl) { renderSyncPill(); return; }
   clearTimeout(syncTimer);
   renderSyncPill('pending');
-  syncTimer = setTimeout(pushToSheets, 1000);
+  syncTimer = setTimeout(()=>{ syncTimer = null; naFila(enviarAgora); }, 1000);
 }
 
-async function pushToSheets(){
-  syncTimer = null;
+// ---------- a "base": como a planilha estava na última vez que este navegador falou com ela ----------
+// É o que permite juntar alterações: comparando a base com o que está aqui e com o que está na
+// planilha agora, dá para saber quem mudou o quê -- e juntar as duas coisas em vez de escolher uma.
+function dadosDe(s){ return JSON.parse(JSON.stringify({profiles: s.profiles, products: s.products, padroes: s.padroes})); }
+// Guardada no IndexedDB: o localStorage tem uns 5 MB e já guarda o catálogo; com a base junto, um
+// catálogo grande não caberia. Sem IndexedDB (aba anônima em alguns navegadores), tenta o localStorage.
+const idb = {
+  abrir(){
+    if(!this._p) this._p = new Promise((res, rej)=>{
+      try{
+        const r = indexedDB.open('precificacao', 1);
+        r.onupgradeneeded = ()=> r.result.createObjectStore('kv');
+        r.onsuccess = ()=> res(r.result);
+        r.onerror = ()=> rej(r.error);
+      }catch(e){ rej(e); }
+    });
+    return this._p;
+  },
+  async get(k){
+    try{
+      const db = await this.abrir();
+      return await new Promise(res=>{ const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = ()=> res(q.result); q.onerror = ()=> res(undefined); });
+    }catch(e){ return undefined; }
+  },
+  async set(k, v){
+    try{
+      const db = await this.abrir();
+      return await new Promise(res=>{ const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = ()=> res(true); tx.onerror = tx.onabort = ()=> res(false); });
+    }catch(e){ return false; }
+  },
+  async del(k){
+    try{ const db = await this.abrir(); db.transaction('kv', 'readwrite').objectStore('kv').delete(k); }catch(e){}
+  }
+};
+let baseSync = null;
+let baseCarregada = carregarBase();
+async function carregarBase(){
+  let b = await idb.get(BASE_KEY);
+  if(!b){ try{ b = JSON.parse(store.get(BASE_KEY) || 'null'); }catch(e){ b = null; } }
+  baseSync = (b && b.url === gasUrl && b.dados) ? b : null;
+}
+function gravarBase(rev, dados){
+  baseSync = {url: gasUrl, rev, dados};
+  const copia = baseSync;
+  idb.set(BASE_KEY, copia).then(ok=>{
+    if(ok){ store.del(BASE_KEY); return; }
+    store.set(BASE_KEY, JSON.stringify(copia));   // se nem isso couber, a base fica só na memória desta aba
+  });
+}
+function esquecerBase(){ baseSync = null; baseCarregada = Promise.resolve(); idb.del(BASE_KEY); store.del(BASE_KEY); }
+
+// Texto canônico (chaves em ordem) para comparar objetos sem depender da ordem das propriedades.
+function canon(v){
+  if(Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+  if(v && typeof v === 'object'){
+    return '{' + Object.keys(v).filter(k=> v[k] !== undefined).sort().map(k=> JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
+  }
+  return JSON.stringify(v === undefined ? null : v);
+}
+
+// Quem mexeu por último em cada item. Não conta como alteração ao comparar.
+const META = ['alteradoPor','alteradoEm'];
+const CAMPOS_PRODUTO = ['sku','name','cogs','costOverride','fixedCost','misc','taxPct','marketingPct'];
+const CAMPOS_ANUNCIO = ['marketplaceId','sku','mode','price','marginTarget','coupon','freightNet','mktFixedFee'];
+
+// Os dados em quatro coleções de itens com chave: marketplaces (pela chave interna uid, que não
+// muda quando o ID é trocado), produtos, anúncios (com o produto a que pertencem em _prod -- assim
+// um anúncio que mudou de produto na unificação é só um campo alterado) e os custos da empresa.
+function entidades(d){
+  const mk = new Map(), pr = new Map(), an = new Map();
+  (d.profiles||[]).forEach(p=>{
+    const o = {};
+    Object.keys(p).forEach(k=>{ if(k.charAt(0) !== '_') o[k] = p[k]; });
+    mk.set(p.uid || ('m:' + p.id), o);
+  });
+  (d.products||[]).forEach(p=>{
+    const o = {id: p.id};
+    CAMPOS_PRODUTO.concat(META).forEach(k=> o[k] = (p[k] === undefined || p[k] === null) ? '' : p[k]);
+    pr.set(p.id, o);
+    (p.listings||[]).forEach(l=>{
+      const a = {id: l.id, _prod: p.id};
+      CAMPOS_ANUNCIO.concat(META).forEach(k=> a[k] = (l[k] === undefined || l[k] === null) ? '' : l[k]);
+      an.set(l.id, a);
+    });
+  });
+  const pad = {};
+  Object.keys(d.padroes||{}).forEach(k=> pad[k] = d.padroes[k]);
+  return {mk, pr, an, pad};
+}
+function semMeta(o){
+  const c = {};
+  Object.keys(o).forEach(k=>{ if(META.indexOf(k) === -1) c[k] = o[k]; });
+  return canon(c);
+}
+function assinaturaDados(d){
+  const E = entidades(d);
+  return canon([[...E.mk], [...E.pr], [...E.an], E.pad]);
+}
+function temPendencia(){ return !!baseSync && assinaturaDados(dadosDe(state)) !== assinaturaDados(baseSync.dados); }
+
+// Quem fez a alteração que veio da planilha. Conteúdo mudado com o mesmo 'quem/quando' de antes
+// só pode ser edição feita direto na planilha, que não passa pelo sistema.
+function autorRemoto(bo, ro){
+  if(bo && ro && bo.alteradoEm === ro.alteradoEm && bo.alteradoPor === ro.alteradoPor) return 'alguém direto na planilha';
+  return (ro && ro.alteradoPor) || '';
+}
+
+// Junta campo a campo. Quem mudou um campo leva; se os dois mudaram o MESMO campo para valores
+// diferentes, fica o valor daqui e o caso vai para a lista de conflitos, com o valor da outra pessoa,
+// para ser conferido -- nada some sem aparecer.
+function mesclaCampos(bo, lo, ro, tipo, id, conflitos){
+  const v = {};
+  const chaves = new Set(Object.keys(bo).concat(Object.keys(lo), Object.keys(ro)));
+  let usouDaqui = false;
+  chaves.forEach(k=>{
+    if(META.indexOf(k) !== -1) return;
+    const b = canon(bo[k]), l = canon(lo[k]), r = canon(ro[k]);
+    if(l === b) v[k] = ro[k];
+    else if(r === b || l === r){ v[k] = lo[k]; usouDaqui = true; }
+    else {
+      v[k] = lo[k]; usouDaqui = true;
+      conflitos.push({tipo, id, acao:'campo', campo:k, meu: lo[k], deles: ro[k], quem: autorRemoto(bo, ro), obj: lo});
+    }
+  });
+  const fonte = usouDaqui ? lo : ro;
+  META.forEach(k=>{ if(fonte[k] !== undefined) v[k] = fonte[k]; });
+  return v;
+}
+function mesclaMapa(b, l, r, tipo, conflitos){
+  const res = new Map();
+  new Set([...r.keys(), ...l.keys(), ...b.keys()]).forEach(id=>{
+    const bo = b.get(id), lo = l.get(id), ro = r.get(id);
+    let v = null;
+    if(!bo){
+      v = (lo && ro) ? mesclaCampos({}, lo, ro, tipo, id, conflitos) : (lo || ro);
+    } else {
+      const lMud = !!lo && semMeta(lo) !== semMeta(bo);
+      const rMud = !!ro && semMeta(ro) !== semMeta(bo);
+      if(!lo && !ro) v = null;
+      else if(!lo){   // excluído aqui
+        if(rMud){ v = ro; conflitos.push({tipo, id, acao:'excluidoAqui', quem: autorRemoto(bo, ro), obj: ro}); }
+      } else if(!ro){ // excluído lá
+        if(lMud){ v = lo; conflitos.push({tipo, id, acao:'excluidoLa', obj: lo}); }
+      }
+      else if(!lMud) v = ro;
+      else if(!rMud) v = lo;
+      else v = mesclaCampos(bo, lo, ro, tipo, id, conflitos);
+    }
+    if(v) res.set(id, v);
+  });
+  // ordem: a da planilha, e cada item novo daqui entra logo depois do vizinho que tinha aqui
+  const ordem = [...r.keys()].filter(id=> res.has(id));
+  const dentro = new Set(ordem);
+  let anterior = null;
+  [...l.keys()].forEach(id=>{
+    if(!res.has(id)) return;
+    if(!dentro.has(id)){
+      const i = anterior === null ? -1 : ordem.indexOf(anterior);
+      ordem.splice(i + 1, 0, id); dentro.add(id);
+    }
+    anterior = id;
+  });
+  res.forEach((v, id)=>{ if(!dentro.has(id)) ordem.push(id); });
+  const out = new Map();
+  ordem.forEach(id=> out.set(id, res.get(id)));
+  return out;
+}
+function semIndefinidos(o){
+  const c = {};
+  Object.keys(o).forEach(k=>{ if(o[k] !== undefined) c[k] = o[k]; });
+  return c;
+}
+function mesclar(base, local, remoto){
+  const B = entidades(base), L = entidades(local), R = entidades(remoto);
+  const conflitos = [];
+  const mk = mesclaMapa(B.mk, L.mk, R.mk, 'marketplace', conflitos);
+  const pr = mesclaMapa(B.pr, L.pr, R.pr, 'produto', conflitos);
+  const an = mesclaMapa(B.an, L.an, R.an, 'anuncio', conflitos);
+  const pad = mesclaCampos(B.pad, L.pad, R.pad, 'padroes', 'padroes', conflitos);
+  // produto excluído de um lado e alterado do outro fica -- e com os anúncios que tinha do lado que
+  // o manteve (excluir o produto levava os anúncios junto, e eles não devem sumir sozinhos)
+  conflitos.forEach(c=>{
+    if(c.tipo !== 'produto' || (c.acao !== 'excluidoAqui' && c.acao !== 'excluidoLa')) return;
+    const lado = c.acao === 'excluidoAqui' ? R : L;
+    lado.an.forEach((a, id)=>{ if(a._prod === c.id && !an.has(id)) an.set(id, a); });
+  });
+  // anúncio alterado de um lado cujo produto foi excluído do outro: o produto volta
+  an.forEach(a=>{
+    if(pr.has(a._prod)) return;
+    const p = L.pr.get(a._prod) || R.pr.get(a._prod) || B.pr.get(a._prod);
+    if(p){ pr.set(a._prod, p); conflitos.push({tipo:'produto', id:a._prod, acao:'recriado', obj:p}); }
+  });
+  // anúncio apontando para um ID de marketplace que foi trocado do outro lado: segue o marketplace
+  const idsMk = new Set([...mk.values()].map(p=> p.id));
+  const uidPorId = new Map();
+  [B, R, L].forEach(E=> E.mk.forEach((p, uid)=> uidPorId.set(p.id, uid)));
+  an.forEach((a, id)=>{
+    if(!a.marketplaceId || idsMk.has(a.marketplaceId)) return;
+    const m = mk.get(uidPorId.get(a.marketplaceId));
+    if(!m) return;
+    const antigo = a.marketplaceId;
+    a.marketplaceId = m.id;
+    // o SKU não é mexido (pode ser o SKU de verdade no marketplace); só avisa se ficou com o final velho
+    if(String(a.sku).toLowerCase().endsWith('-' + antigo.toLowerCase()))
+      conflitos.push({tipo:'anuncio', id, acao:'idTrocado', obj:a, antigo, novo:m.id});
+  });
+  const products = [...pr.values()].map(p=> Object.assign(semIndefinidos(p), {listings: []}));
+  const porId = new Map(products.map(p=> [p.id, p]));
+  an.forEach(a0=>{
+    const a = semIndefinidos(a0);
+    const dono = porId.get(a._prod);
+    delete a._prod;
+    if(dono) dono.listings.push(a);
+  });
+  // os dois lados puseram o produto no mesmo marketplace: fica tudo, mas avisa
+  products.forEach(p=>{
+    const vistos = new Set();
+    p.listings.forEach(l=>{
+      if(vistos.has(l.marketplaceId)) conflitos.push({tipo:'produto', id:p.id, acao:'canalRepetido', obj:p, mid:l.marketplaceId});
+      vistos.add(l.marketplaceId);
+    });
+  });
+  return {dados: {profiles: [...mk.values()].map(semIndefinidos), products, padroes: semIndefinidos(pad)}, conflitos};
+}
+
+// Coloca dados novos no sistema SEM trocar os objetos que já existem: um formulário aberto, a
+// importação ou a revisão de unificação guardam referência a produtos e anúncios, e se o objeto
+// fosse trocado por um novo o que a pessoa salvasse ali iria para um objeto solto e se perderia.
+function aplicarDados(dados, migracao){
+  const novo = normalizeState(Object.assign(JSON.parse(JSON.stringify(dados)), {selectedSkuId: state.selectedSkuId}));
+  if(!novo) return;
+  const reaproveita = (velho, n)=>{ Object.keys(velho).forEach(k=> delete velho[k]); return Object.assign(velho, n); };
+  const velhosMk = new Map(state.profiles.map(p=> [p.uid, p]));
+  const velhosP = new Map(state.products.map(p=> [p.id, p]));
+  const velhosL = new Map();
+  state.products.forEach(p=> p.listings.forEach(l=> velhosL.set(l.id, l)));
+  novo.profiles = novo.profiles.map(p=> velhosMk.has(p.uid) ? reaproveita(velhosMk.get(p.uid), p) : p);
+  novo.products = novo.products.map(p=>{
+    const lst = p.listings.map(l=> velhosL.has(l.id) ? reaproveita(velhosL.get(l.id), l) : l);
+    return velhosP.has(p.id) ? reaproveita(velhosP.get(p.id), Object.assign(p, {listings: lst})) : Object.assign(p, {listings: lst});
+  });
+  if(migracao) novo._migracao = migracao;
+  state = novo;
+  versaoDados++;   // dados novos: resultados guardados não valem mais
+  store.set(STORAGE_KEY, JSON.stringify(state));
+  renderProdutos();
+  if(document.getElementById('view-marketplaces').classList.contains('active')) renderMarketplaces();
+  if(document.getElementById('view-padroes').classList.contains('active')) renderPadroes();
+  avisaMigracao();
+  avisaFormularioDesatualizado();
+}
+// Formulário de produto aberto e alguém salvou aquele produto: os campos na tela estão velhos.
+function avisaFormularioDesatualizado(){
+  const form = document.getElementById('skuForm');
+  if(!editingSkuId || form.style.display === 'none' || document.getElementById('f_avisoRemoto')) return;
+  const acoes = form.querySelector('.form-actions');
+  if(!acoes) return;
+  const p = document.createElement('p');
+  p.id = 'f_avisoRemoto'; p.className = 'warnline';
+  p.style.cssText = 'color:var(--warn);margin:12px 0 0;';
+  p.textContent = 'A planilha foi atualizada enquanto este formulário estava aberto, e os valores na tela podem estar velhos. Ao salvar, só o que você mudou aqui é gravado: o resto fica como está agora. Para ver os valores novos, cancele e abra de novo.';
+  acoes.parentNode.insertBefore(p, acoes);
+}
+
+// ---------- quem mudou o quê ----------
+const ROTULOS_CAMPO = {
+  produto: {sku:'SKU do produto', name:'Nome', cogs:'Custo (CMV)', costOverride:'Custo próprio (destravado)', fixedCost:'Custo fixo',
+    misc:'Outros custos', taxPct:'Imposto %', marketingPct:'Marketing %'},
+  anuncio: {_prod:'Produto', marketplaceId:'Marketplace', sku:'SKU do anúncio', mode:'Definido por', price:'Preço',
+    marginTarget:'Margem alvo %', coupon:'Cupom', freightNet:'Frete líquido', mktFixedFee:'Taxa fixa do anúncio'},
+  marketplace: {id:'ID', label:'Nome', color:'Cor', confidence:'Confiança', note:'Observação', commission:'Comissão %',
+    service:'Taxa de serviço %', transaction:'Taxa de transação %', fixedFee:'Taxa fixa', dualAdPrice:'Preço de anúncio duplo',
+    variableFreight:'Frete por anúncio', variableFixedFee:'Taxa fixa por anúncio', tiered:'Cobra por faixa de preço', tiers:'Faixas de preço'},
+  padroes: {fixedCost:'Custo fixo', misc:'Outros custos', taxPct:'Imposto %', marketingPct:'Marketing %', coupon:'Cupom padrão', freightNet:'Frete padrão'}
+};
+const CAMPOS_FORA_DO_HISTORICO = ['uid','idManual'];
+function rotuloCampo(tipo, k){ return (ROTULOS_CAMPO[tipo] || {})[k] || k; }
+function textoValor(v){
+  // faixas de preço: legível em vez do JSON guardado na planilha
+  if(Array.isArray(v) && v.length && v[0] && typeof v[0] === 'object' && 'min' in v[0]){
+    return v.map(t=> `a partir de ${brl(t.min)}: ${t.commission}%`
+      + (t.service ? ` + ${t.service}%${t.serviceCap ? ' (teto ' + brl(t.serviceCap) + ')' : ''}` : '')
+      + (t.transaction ? ` + ${t.transaction}%` : '')
+      + (t.fixedFee ? ` + ${brl(t.fixedFee)}` : '')).join('; ');
+  }
+  if(v === true) return 'sim';
+  if(v === false) return 'não';
+  if(v === undefined || v === null) return '';
+  if(typeof v === 'number') return v.toLocaleString('pt-BR', {maximumFractionDigits: 4});
+  if(typeof v === 'object') return JSON.stringify(v).slice(0, 200);
+  return String(v);
+}
+// Nome legível de um item, procurando nos dados que existirem (o item pode já ter sido excluído)
+function nomeDoItem(tipo, id, obj, fontes){
+  const acha = (fn)=>{ for(const f of fontes){ const r = fn(f); if(r) return r; } return null; };
+  if(tipo === 'padroes') return 'Custos da empresa';
+  if(tipo === 'marketplace') return 'Marketplace ' + ((obj && obj.label) || id);
+  if(tipo === 'produto') return 'Produto ' + ((obj && obj.sku) || id) + ((obj && obj.name) ? ' · ' + obj.name : '');
+  const mid = obj && obj.marketplaceId;
+  const mk = acha(E=> [...E.mk.values()].find(p=> p.id === mid));
+  return 'Anúncio ' + ((obj && obj.sku) || id) + ' (' + ((mk && mk.label) || mid || '?') + ')';
+}
+
+// Marca quem mudou cada item alterado desde a última sincronização e monta as linhas do histórico.
+function carimbarAlteracoes(){
+  if(!baseSync) return [];
+  const B = entidades(baseSync.dados), A = entidades(dadosDe(state));
+  const agora = new Date().toISOString();
+  const quem = usuario || '';
+  const log = [];
+  const linha = (onde, campo, antes, depois)=> log.push({quando: agora, quem, onde, campo, antes: textoValor(antes), depois: textoValor(depois)});
+  const nomeProduto = id=>{ const p = A.pr.get(id) || B.pr.get(id); return p ? p.sku : id; };
+  function compara(tipo, bo, ao, onde){
+    if(!bo){ linha(onde, 'criado', '', ''); return; }
+    Object.keys(Object.assign({}, bo, ao)).forEach(k=>{
+      if(META.indexOf(k) !== -1 || CAMPOS_FORA_DO_HISTORICO.indexOf(k) !== -1) return;
+      if(canon(bo[k]) === canon(ao[k])) return;
+      if(k === '_prod') linha(onde, rotuloCampo(tipo, k), nomeProduto(bo[k]), nomeProduto(ao[k]));
+      else linha(onde, rotuloCampo(tipo, k), bo[k], ao[k]);
+    });
+  }
+  const mudou = (bo, ao)=> !bo || semMeta(bo) !== semMeta(ao);
+  const fontes = [A, B];
+  state.profiles.forEach(p=>{
+    const ao = A.mk.get(p.uid), bo = B.mk.get(p.uid);
+    if(ao && mudou(bo, ao)){ p.alteradoPor = quem; p.alteradoEm = agora; compara('marketplace', bo, ao, nomeDoItem('marketplace', p.uid, ao, fontes)); }
+  });
+  state.products.forEach(p=>{
+    const ao = A.pr.get(p.id), bo = B.pr.get(p.id);
+    if(ao && mudou(bo, ao)){ p.alteradoPor = quem; p.alteradoEm = agora; compara('produto', bo, ao, nomeDoItem('produto', p.id, ao, fontes)); }
+    p.listings.forEach(l=>{
+      const al = A.an.get(l.id), bl = B.an.get(l.id);
+      if(al && mudou(bl, al)){ l.alteradoPor = quem; l.alteradoEm = agora; compara('anuncio', bl, al, nomeDoItem('anuncio', l.id, al, fontes)); }
+    });
+  });
+  B.mk.forEach((bo, uid)=>{ if(!A.mk.has(uid)) linha(nomeDoItem('marketplace', uid, bo, fontes), 'excluído', '', ''); });
+  B.pr.forEach((bo, id)=>{ if(!A.pr.has(id)) linha(nomeDoItem('produto', id, bo, fontes), 'excluído', '', ''); });
+  B.an.forEach((bo, id)=>{ if(!A.an.has(id) && A.pr.has(bo._prod)) linha(nomeDoItem('anuncio', id, bo, fontes), 'excluído', '', ''); });
+  if(Object.keys(B.pad).length) compara('padroes', B.pad, A.pad, 'Custos da empresa');   // base vazia = primeiro envio: nada a comparar
+  if(log.length) store.set(STORAGE_KEY, JSON.stringify(state));
+  const LIMITE = 400;
+  if(log.length > LIMITE){
+    const resto = log.length - LIMITE;
+    log.length = LIMITE;
+    log.push({quando: agora, quem, onde: 'Alteração em massa', campo: '', antes: '', depois: `e mais ${resto} alteração(ões) nesta mesma gravação`});
+  }
+  return log;
+}
+
+// ---------- conflitos: o que foi mudado dos dois lados ----------
+function registrarConflitos(lista, B, L, R){
+  if(!lista.length) return;
+  const agora = new Date().toISOString();
+  const fontes = [L, R, B];
+  const novos = lista.map(c=>{
+    const onde = nomeDoItem(c.tipo, c.id, c.obj, fontes);
+    const quem = c.quem || 'outra pessoa';
+    let texto;
+    if(c.acao === 'campo') texto = `${rotuloCampo(c.tipo, c.campo)}: você pôs ${textoValor(c.meu) || '(vazio)'} e ${quem} pôs ${textoValor(c.deles) || '(vazio)'}. Ficou o seu.`;
+    else if(c.acao === 'excluidoAqui') texto = `Você excluiu, mas ${quem} alterou ao mesmo tempo. O item foi mantido; exclua de novo se for o caso.`;
+    else if(c.acao === 'excluidoLa') texto = 'Outra pessoa excluiu, mas você tinha alterado. O item foi mantido com a sua alteração.';
+    else if(c.acao === 'recriado') texto = 'Outra pessoa excluiu o produto, mas um anúncio dele tinha sido alterado. O produto voltou.';
+    else if(c.acao === 'idTrocado') texto = `Foi criado com o ID antigo "${c.antigo}" enquanto o ID do marketplace era trocado para "${c.novo}". Já está no marketplace certo, mas o SKU ainda termina em -${c.antigo}: corrija no produto se precisar.`;
+    else if(c.acao === 'canalRepetido') texto = `Ficou com dois anúncios em ${profileOf(c.mid).label}: cada pessoa acrescentou um. Confira e exclua o que sobrar.`;
+    else texto = c.acao;
+    return {quando: agora, onde, texto, tipo: c.tipo, id: c.id, campo: c.acao === 'campo' ? c.campo : null,
+      deles: c.acao === 'campo' ? c.deles : null, quem: c.quem || ''};
+  });
+  conflitosRecentes = novos.concat(conflitosRecentes).slice(0, 60);
+  store.set(CONFLITOS_KEY, JSON.stringify(conflitosRecentes));
+  toast(`${novos.length === 1 ? 'Um item foi alterado' : novos.length + ' itens foram alterados'} aqui e por outra pessoa ao mesmo tempo. Juntei tudo; confira em Sincronização → Conflitos.`, 'warn', 'Alterações juntadas');
+  atualizaTelaDeSync();
+}
+// "Usar o valor da outra pessoa" num conflito de campo
+function usarValorDeles(i){
+  const c = conflitosRecentes[i];
+  if(!c || c.campo === null) return;
+  let alvo = null;
+  if(c.tipo === 'marketplace') alvo = state.profiles.find(p=> p.uid === c.id);
+  else if(c.tipo === 'produto') alvo = produtoPorId(c.id);
+  else if(c.tipo === 'anuncio'){ const a = anuncioPorId(c.id); alvo = a && a.lst; }
+  else if(c.tipo === 'padroes') alvo = state.padroes;
+  if(!alvo || c.campo === '_prod'){ toast('Esse item não existe mais ou não dá para trocar daqui.', 'err'); return; }
+  if(c.tipo === 'marketplace' && c.campo === 'id'){ toast('Para o ID do marketplace, use o campo "ID do marketplace" no cartão dele: assim os anúncios acompanham.', 'warn'); return; }
+  alvo[c.campo] = c.deles;
+  if(c.tipo === 'marketplace') normalizeProfile(alvo);
+  conflitosRecentes.splice(i, 1);
+  store.set(CONFLITOS_KEY, JSON.stringify(conflitosRecentes));
+  saveState();
+  renderProdutos();
+  if(document.getElementById('view-marketplaces').classList.contains('active')) renderMarketplaces();
+  if(document.getElementById('view-padroes').classList.contains('active')) renderPadroes();
+  atualizaTelaDeSync();
+  toast('Valor trocado.', 'ok');
+}
+
+// Alterações de outras pessoas que chegaram nesta leitura: quantas e de quem
+// "seus": campos que VOCÊ tinha alterado por último e que outra pessoa trocou depois -- quem teve
+// o valor substituído fica sabendo, não só quem salvou por último.
+function contarRecebidas(base, remoto){
+  const B = entidades(base), R = entidades(remoto);
+  const nomes = new Set();
+  const seus = [];
+  let n = 0;
+  const olha = (bm, rm, tipo)=>{
+    rm.forEach((ro, id)=>{
+      const bo = bm.get(id);
+      if(bo && semMeta(bo) === semMeta(ro)) return;
+      n++;
+      const autor = autorRemoto(bo, ro);
+      if(autor && autor !== usuario) nomes.add(autor);
+      if(bo && usuario && bo.alteradoPor === usuario && autor !== usuario){
+        Object.keys(ro).forEach(k=>{
+          if(META.indexOf(k) !== -1 || CAMPOS_FORA_DO_HISTORICO.indexOf(k) !== -1 || k === '_prod' || canon(bo[k]) === canon(ro[k])) return;
+          seus.push({tipo, id, campo: k,
+            texto: `${nomeDoItem(tipo, id, ro, [R, B])}: ${rotuloCampo(tipo, k)} ${textoValor(bo[k]) || '(vazio)'} → ${textoValor(ro[k]) || '(vazio)'} (${autor || 'outra pessoa'})`});
+        });
+      }
+    });
+    bm.forEach((bo, id)=>{ if(!rm.has(id)) n++; });
+  };
+  olha(B.mk, R.mk, 'marketplace'); olha(B.pr, R.pr, 'produto'); olha(B.an, R.an, 'anuncio');
+  if(canon(B.pad) !== canon(R.pad)) n++;
+  return {n, nomes: [...nomes], seus};
+}
+
+// ---------- conversa com a planilha ----------
+async function buscarPlanilha(){
+  const res = await fetch(gasUrl, {method:'GET'});
+  const data = await res.json();
+  if(data.ok === false) throw new Error(data.error || 'O Apps Script devolveu um erro.');
+  if(!data.profiles || !data.skus) throw new Error('A planilha respondeu, mas sem o formato esperado. Confira se o código do Apps Script foi colado certo.');
+  versaoScript = Number(data.version) || 1;
+  if(versaoScript < GAS_VERSAO_MINIMA){
+    scriptDesatualizado = true;
+    throw new Error(MSG_SCRIPT_ANTIGO);
+  }
+  scriptDesatualizado = false;
+  historicoPlanilha = Array.isArray(data.historico) ? data.historico : null;
+  return data;
+}
+function estadoDaPlanilha(data){
+  return normalizeState({
+    profiles: data.profiles,
+    skus: data.skus,
+    padroes: Object.keys(data.padroes||{}).length ? data.padroes : state.padroes,
+    selectedSkuId: null
+  });
+}
+function paraPlanilha(d){ return {profiles: d.profiles, skus: achatarProdutos(d.products), padroes: d.padroes}; }
+const espera = ms => new Promise(r=> setTimeout(r, ms));
+
+// Lê a planilha e junta com o que há aqui. Roda dentro da fila.
+async function lerEJuntar(showAlerts){
+  await baseCarregada;
+  const data = await buscarPlanilha();
+  const rev = Number(data.rev) || 0;
+  const remotoEstado = estadoDaPlanilha(data);
+  if(!remotoEstado) throw new Error('A planilha respondeu, mas sem o formato esperado.');
+  const migracao = remotoEstado._migracao;
+  const remoto = dadosDe(remotoEstado);
+  // Planilha vazia (primeira conexão): manda os dados daqui em vez de apagar tudo. A segunda
+  // condição só vale na primeira conexão deste navegador; depois disso, catálogo vazio na planilha
+  // pode ser alguém que excluiu tudo, e isso é tratado pela junção normal.
+  const vazia = data.profiles.length === 0 || (!baseSync && data.skus.length === 0 && state.products.length > 0);
+  if(vazia){
+    revPlanilha = rev;
+    gravarBase(rev, {profiles: [], products: [], padroes: {}});
+    if(showAlerts) toast('A planilha estava vazia -- enviei os dados deste navegador para lá.', 'warn', 'Sincronizado');
+    return;
+  }
+  if(!baseSync){
+    // primeira conversa deste navegador com esta planilha: vale o que está lá
+    aplicarDados(remoto, migracao);
+    revPlanilha = rev;
+    gravarBase(rev, remoto);
+    if(showAlerts) toast(`${state.products.length} produto(s), ${listagens().length} anúncio(s) e ${state.profiles.length} marketplace(s) carregados da planilha.`, 'ok', 'Sincronizado');
+    return;
+  }
+  const local = dadosDe(state);
+  const recebidas = contarRecebidas(baseSync.dados, remoto);
+  const r = mesclar(baseSync.dados, local, remoto);
+  if(assinaturaDados(r.dados) !== assinaturaDados(local)) aplicarDados(r.dados, migracao);
+  registrarConflitos(r.conflitos, entidades(baseSync.dados), entidades(local), entidades(remoto));
+  revPlanilha = rev;
+  gravarBase(rev, remoto);
+  if(showAlerts) toast(`${state.products.length} produto(s), ${listagens().length} anúncio(s) e ${state.profiles.length} marketplace(s). ` + (recebidas.n ? `${recebidas.n} alteração(ões) recebida(s)${recebidas.nomes.length ? ' de ' + recebidas.nomes.join(', ') : ''}.` : 'Nada novo na planilha.'), 'ok', 'Sincronizado');
+  else if(recebidas.n && recebidas.nomes.length) toast(`${recebidas.nomes.join(', ')} ${recebidas.nomes.length > 1 ? 'fizeram' : 'fez'} ${recebidas.n} alteração(ões). Já estão na sua tela.`, 'ok', 'Atualizado');
+  // o que virou conflito agora já foi avisado (e ficou o seu valor): não repete aqui
+  const seus = recebidas.seus.filter(s=> !r.conflitos.some(c=> c.tipo === s.tipo && c.id === s.id));
+  if(seus.length){
+    toast(seus.slice(0, 3).map(s=> s.texto).join(' · ') + (seus.length > 3 ? ` · e mais ${seus.length - 3} (veja o histórico em Sincronização)` : ''), 'warn', 'Trocaram algo que você tinha alterado');
+  }
+}
+
+// Envia o que mudou aqui. Se outra pessoa gravou antes, lê, junta e tenta de novo -- sem descartar nada.
+async function enviarAgora(){
   if(!gasUrl) return;
   if(scriptDesatualizado){
     lastSyncOk = false; lastSyncError = MSG_SCRIPT_ANTIGO;
     renderSyncPill(); atualizaTelaDeSync(); return;
   }
-  if(revPlanilha === null){
-    lastSyncOk = false;
-    lastSyncError = 'Ainda não consegui ler a planilha nesta sessão, então as alterações estão só neste navegador -- enviar sem ter lido poderia apagar o que outro dispositivo salvou. Use "Sincronizar agora" quando a conexão voltar (isso recarrega os dados da planilha).';
-    renderSyncPill(); atualizaTelaDeSync(); return;
-  }
   syncing = true;
   renderSyncPill('syncing');
-  let conflito = false;
   try{
-    const res = await fetch(gasUrl, {
-      method:'POST',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({action:'saveAll', baseRev: revPlanilha, clientVersion: GAS_VERSAO_MINIMA,
-        textFields: CAMPOS_TEXTO_PLANILHA, state: estadoParaPlanilha()})
-    });
-    const data = await res.json();
-    if(data.conflict){ conflito = true; }
-    else {
-      if(!data.ok) throw new Error(data.error || 'Erro desconhecido retornado pelo script.');
-      revPlanilha = Number(data.rev);
-      lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
+    await baseCarregada;
+    if(revPlanilha === null || !baseSync) await lerEJuntar(false);
+    let gravou = false;
+    for(let tentativa = 0; tentativa < 8; tentativa++){
+      if(!temPendencia()){ gravou = true; break; }
+      const log = carimbarAlteracoes();
+      const enviado = dadosDe(state);
+      const res = await fetch(gasUrl, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({action:'saveAll', baseRev: revPlanilha, clientVersion: CLIENTE_VERSAO, usuario,
+          textFields: CAMPOS_TEXTO_PLANILHA, state: paraPlanilha(enviado), log})
+      });
+      const data = await res.json();
+      if(data.ok){
+        revPlanilha = Number(data.rev);
+        gravarBase(revPlanilha, enviado);
+        if(historicoPlanilha && Number(data.version) >= 5) historicoPlanilha = log.slice().reverse().concat(historicoPlanilha).slice(0, 300);
+        continue;   // o que foi alterado enquanto isto viajava sai na próxima volta
+      }
+      if(data.conflict){ await lerEJuntar(false); continue; }
+      if(data.busy){ await espera(2500); continue; }
+      throw new Error(data.error || 'Erro desconhecido retornado pelo script.');
     }
+    if(!gravou) throw new Error('Muitas gravações seguidas de outras pessoas; vou tentar de novo em instantes. Nada foi perdido: as alterações continuam aqui.');
+    lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
   }catch(err){
-    lastSyncOk = false; lastSyncError = mensagemDeErroDeRede(err);
+    lastSyncOk = false;
+    lastSyncError = scriptDesatualizado ? MSG_SCRIPT_ANTIGO : mensagemDeErroDeRede(err);
+    if(!scriptDesatualizado && revPlanilha !== null){ clearTimeout(syncTimer); syncTimer = setTimeout(()=>{ syncTimer = null; naFila(enviarAgora); }, 15000); }
   }
   syncing = false;
-  if(conflito){
-    // Outro dispositivo gravou primeiro. Em vez de sobrescrever o trabalho dele, recarrega a
-    // planilha. A alteração feita aqui não entra -- e o usuário é avisado disso.
-    await pullFromSheets(false);
-    toast('Outro dispositivo salvou alterações na planilha antes deste. Recarreguei os dados de lá; a última mudança feita aqui não foi gravada -- refaça se ainda precisar.', 'warn', 'Conflito de sincronização');
-    return;
-  }
   renderSyncPill();
   atualizaTelaDeSync();
 }
@@ -1034,56 +1594,39 @@ function mensagemDeErroDeRede(err){
   return m;
 }
 
-async function pullFromSheets(showAlerts){
-  if(!gasUrl) return;
-  // Alteração salva há menos de 1 s ainda não saiu. Ler a planilha agora trocaria os dados locais
-  // pelos de lá antes do envio, e a alteração se perderia (ex.: editar e clicar em Sincronizar
-  // agora em seguida). Envia primeiro, lê depois.
-  if(syncTimer){ clearTimeout(syncTimer); syncTimer = null; await pushToSheets(); }
-  syncing = true;
-  renderSyncPill('syncing');
+// Ler a planilha (abertura, "Sincronizar agora", voltar para a aba). O que estiver pendente aqui
+// não é descartado: entra na junção e depois é enviado.
+function pullFromSheets(showAlerts){
+  if(!gasUrl) return Promise.resolve();
+  clearTimeout(syncTimer); syncTimer = null;
+  return naFila(async ()=>{
+    syncing = true;
+    renderSyncPill('syncing');
+    try{
+      await lerEJuntar(showAlerts);
+      lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
+    }catch(err){
+      lastSyncOk = false; lastSyncError = scriptDesatualizado ? MSG_SCRIPT_ANTIGO : mensagemDeErroDeRede(err);
+      if(showAlerts || scriptDesatualizado) toast(lastSyncError, 'err', scriptDesatualizado ? 'Apps Script desatualizado' : 'Não foi possível sincronizar');
+    }
+    syncing = false;
+    renderSyncPill();
+    atualizaTelaDeSync();
+    if(lastSyncOk && temPendencia()) await enviarAgora();
+  });
+}
+
+// Com mais de uma pessoa usando, a tela precisa ficar em dia sem ninguém clicar em nada. A cada
+// minuto pergunta à planilha só o número da revisão (leve); se mudou, lê e junta. Não roda com
+// alteração pendente, com a aba escondida nem com alguém digitando num campo.
+async function conferirSeMudou(){
+  if(!gasUrl || document.visibilityState !== 'visible' || syncOcupado() || revPlanilha === null) return;
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName || '')) return;
   try{
-    const res = await fetch(gasUrl, {method:'GET'});
-    const data = await res.json();
-    if(data.ok === false) throw new Error(data.error || 'O Apps Script devolveu um erro.');
-    if(!data.profiles || !data.skus) throw new Error('A planilha respondeu, mas sem o formato esperado. Confira se o código do Apps Script foi colado certo.');
-    versaoScript = Number(data.version) || 1;
-    if(versaoScript < GAS_VERSAO_MINIMA){
-      scriptDesatualizado = true;
-      throw new Error(MSG_SCRIPT_ANTIGO);
-    }
-    scriptDesatualizado = false;
-    revPlanilha = Number(data.rev) || 0;
-    // Planilha vazia (primeira conexão) -- envia os dados locais para lá em vez de apagar tudo.
-    // A checagem cobre produtos também: uma planilha com marketplaces mas sem nenhum produto
-    // apagaria silenciosamente o catálogo local no primeiro pull automático da abertura.
-    const planilhaVazia = data.profiles.length === 0 || (data.skus.length === 0 && state.products.length > 0);
-    if(planilhaVazia){
-      await pushToSheets();
-      if(showAlerts) toast('A planilha estava vazia -- enviei os dados deste navegador para lá.', 'warn', 'Sincronizado');
-    } else {
-      state = normalizeState({
-        profiles: data.profiles,
-        skus: data.skus,
-        padroes: Object.keys(data.padroes||{}).length ? data.padroes : state.padroes,
-        selectedSkuId: state.selectedSkuId
-      }) || state;
-      versaoDados++;   // dados novos vindos da planilha: resultados guardados não valem mais
-      store.set(STORAGE_KEY, JSON.stringify(state));
-      renderProdutos();
-      if(document.getElementById('view-marketplaces').classList.contains('active')) renderMarketplaces();
-      if(document.getElementById('view-padroes').classList.contains('active')) renderPadroes();
-      avisaMigracao();
-      if(showAlerts) toast(`${state.products.length} produto(s), ${listagens().length} anúncio(s) e ${state.profiles.length} marketplace(s) carregados da planilha.`, 'ok', 'Sincronizado');
-    }
-    lastSyncOk = true; lastSyncTime = new Date(); lastSyncError = '';
-  }catch(err){
-    lastSyncOk = false; lastSyncError = scriptDesatualizado ? MSG_SCRIPT_ANTIGO : mensagemDeErroDeRede(err);
-    if(showAlerts || scriptDesatualizado) toast(lastSyncError, 'err', scriptDesatualizado ? 'Apps Script desatualizado' : 'Não foi possível sincronizar');
-  }
-  syncing = false;
-  renderSyncPill();
-  if(document.getElementById('view-sync').classList.contains('active')) renderSyncView();
+    const sep = gasUrl.indexOf('?') === -1 ? '?' : '&';
+    const data = await (await fetch(gasUrl + sep + 'so=rev', {method:'GET'})).json();
+    if(data && data.rev !== undefined && Number(data.rev) !== revPlanilha && !syncOcupado()) pullFromSheets(false);
+  }catch(e){ /* sem conexão agora: tenta no próximo minuto */ }
 }
 
 // O Google Sheets devolve booleano como a string 'TRUE'/'true' ou como o número 1 -- nunca como
@@ -1105,6 +1648,10 @@ function normalizeProfile(p){
   // ID que já existia (padrão de fábrica ou escrito na planilha) nunca muda sozinho
   p.idManual = (p.idManual === undefined || p.idManual === null || p.idManual === '') ? true : toBool(p.idManual);
   p.label = String(p.label||'Sem nome'); p.note = String(p.note||''); p.color = String(p.color||'#8c8c88');
+  // chave interna que nunca muda, nem quando o ID é trocado: é por ela que a sincronização
+  // reconhece o mesmo marketplace nos dois lados (preenchida em normalizeState quando falta)
+  p.uid = String(p.uid === undefined || p.uid === null ? '' : p.uid).trim();
+  p.alteradoPor = String(p.alteradoPor||''); p.alteradoEm = String(p.alteradoEm||'');
   if(['alta','media','baixa'].indexOf(p.confidence) === -1) p.confidence = 'baixa';
   p.dualAdPrice = toBool(p.dualAdPrice);
   p.variableFreight = toBool(p.variableFreight);
@@ -1164,6 +1711,66 @@ function renderSyncView(){
   } else {
     detail.textContent = 'Conectado. Aguardando primeira sincronização.';
   }
+  const ui = document.getElementById('usuarioInput');
+  if(document.activeElement !== ui) ui.value = usuario;
+  renderConflitos();
+  renderHistorico();
+}
+
+function dataHora(iso){
+  const d = new Date(iso);
+  return (!iso || isNaN(d)) ? String(iso||'') : d.toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+function ultimaAlteracao(prod){
+  let quem = '', quando = '';
+  [prod].concat(prod.listings || []).forEach(o=>{ if(o.alteradoEm && o.alteradoEm > quando){ quando = o.alteradoEm; quem = o.alteradoPor; } });
+  return quando ? `Última alteração: ${quem || 'sem nome'}, ${dataHora(quando)}.` : '';
+}
+function renderConflitos(){
+  const card = document.getElementById('conflitosCard');
+  if(!conflitosRecentes.length){ card.style.display = 'none'; return; }
+  card.style.display = '';
+  document.getElementById('conflitosLista').innerHTML = conflitosRecentes.map((c, i)=> `<div class="conf-linha">
+      <div class="conf-txt"><b>${esc(c.onde)}</b> <span class="muted">${esc(dataHora(c.quando))}</span><br>${esc(c.texto)}</div>
+      ${c.campo !== null && c.campo !== '_prod' ? `<button class="btn small" data-usar="${i}">Usar o de ${esc(c.quem || 'outra pessoa')}</button>` : ''}
+      <button class="btn small" data-visto="${i}">Ok, visto</button>
+    </div>`).join('');
+}
+function renderHistorico(){
+  const box = document.getElementById('historicoLista');
+  const aviso = document.getElementById('historicoAviso');
+  box.style.display = 'none';
+  if(!gasUrl){ aviso.textContent = 'Conecte uma planilha para ter o histórico de quem mudou o quê.'; return; }
+  if(versaoScript !== null && versaoScript < 5){
+    aviso.textContent = 'O histórico precisa do código do Apps Script versão 5 (veja o último quadro desta tela). A sua planilha está com a versão ' + versaoScript + '. Todo o resto funciona sem ele.';
+    return;
+  }
+  if(!historicoPlanilha){ aviso.textContent = 'Ainda não carregado. Use "Sincronizar agora".'; return; }
+  const filtro = (document.getElementById('historicoBusca').value || '').trim().toLowerCase();
+  const linhas = historicoPlanilha.filter(x=> !filtro || [x.quem, x.onde, x.campo, x.antes, x.depois].join(' ').toLowerCase().indexOf(filtro) !== -1).slice(0, 200);
+  aviso.textContent = historicoPlanilha.length
+    ? `As ${historicoPlanilha.length} alterações mais recentes, da mais nova para a mais antiga. A planilha guarda até 5000, na aba Historico.`
+    : 'Nenhuma alteração registrada ainda. A partir de agora, cada gravação entra aqui.';
+  if(!historicoPlanilha.length) return;
+  box.style.display = '';
+  box.innerHTML = linhas.length ? `<table class="hist"><thead><tr><th>Quando</th><th>Quem</th><th>Onde</th><th>O quê</th><th>Antes</th><th>Depois</th></tr></thead><tbody>${
+    linhas.map(x=> `<tr><td class="nowrap">${esc(dataHora(x.quando))}</td><td>${esc(x.quem || '(sem nome)')}</td><td>${esc(x.onde)}</td><td>${esc(x.campo)}</td><td>${esc(x.antes)}</td><td>${esc(x.depois)}</td></tr>`).join('')
+  }</tbody></table>` : '<p class="sub" style="padding:10px;">Nada encontrado com esse filtro.</p>';
+}
+function definirUsuario(nome){
+  usuario = String(nome || '').trim().slice(0, 40);
+  store.set(USUARIO_KEY, usuario);
+  renderUsuario();
+}
+function renderUsuario(){
+  const b = document.getElementById('usuarioBtn');
+  if(!b) return;
+  b.textContent = usuario ? 'Você: ' + usuario + ' (trocar)' : 'Definir seu nome';
+  b.classList.toggle('falta', !usuario && !!gasUrl);
+}
+function pedirNome(){
+  const n = prompt('Qual é o seu nome? Ele aparece no histórico e nos avisos, para as outras pessoas saberem quem mudou o quê.', usuario);
+  if(n !== null && n.trim()){ definirUsuario(n); atualizaTelaDeSync(); }
 }
 
 
@@ -1878,6 +2485,8 @@ function openSkuForm(id){
        taxPct: state.padroes.taxPct, marketingPct: state.padroes.marketingPct, listings:[]};
   let costUnlocked = !!prod.costOverride;
   const skuBaseOriginal = prod.sku;
+  // como o produto estava ao abrir: ao salvar, só o que difere disto é gravado
+  const original = existente ? JSON.parse(JSON.stringify(existente)) : null;
 
   const canais = {};
   state.profiles.forEach(p=>{
@@ -1897,7 +2506,8 @@ function openSkuForm(id){
   const form = document.getElementById('skuForm');
   form.style.display = 'block';
   abrirPainel(existente ? 'Editar produto' : 'Novo produto',
-    'Custo uma vez só; preço ou margem em cada marketplace. Mudar o custo recalcula todos os canais.');
+    'Custo uma vez só; preço ou margem em cada marketplace. Mudar o custo recalcula todos os canais.'
+    + (existente ? ' ' + ultimaAlteracao(existente) : ''));
 
   function costBlockHtml(){
     if(costUnlocked){
@@ -2102,7 +2712,24 @@ function openSkuForm(id){
     let alvo;
     if(existente){
       alvo = existente;
-      Object.assign(alvo, pr, {id: existente.id, listings});
+      if(state.products.indexOf(alvo) === -1){
+        if(!confirm(`Enquanto este formulário estava aberto, o produto "${alvo.sku}" foi excluído por outra pessoa. Salvar vai recriá-lo com o que está no formulário. Continuar?`)) return;
+        state.products.push(alvo);
+      }
+      // Grava só o que foi mudado NESTE formulário; o resto fica como está agora. Se outra pessoa
+      // salvou algo enquanto o formulário estava aberto, aquilo não é desfeito sem ninguém ver.
+      const mudouAqui = (a, b)=> canon(a) !== canon(b);
+      Object.keys(pr).forEach(k=>{ if(k !== 'id' && mudouAqui(pr[k], original[k])) alvo[k] = pr[k]; });
+      const antes = new Map(original.listings.map(l=> [l.id, l]));
+      const novos = listings.map(l=>{
+        const orig = antes.get(l.id), atual = alvo.listings.find(x=> x.id === l.id);
+        if(!orig || !atual) return l;
+        CAMPOS_ANUNCIO.forEach(k=>{ if(mudouAqui(l[k], orig[k])) atual[k] = l[k]; });
+        return normalizeListing(atual);
+      });
+      // anúncio que outra pessoa acrescentou com o formulário aberto continua
+      const deOutros = alvo.listings.filter(x=> !antes.has(x.id) && !novos.some(n=> n.id === x.id || n.marketplaceId === x.marketplaceId));
+      alvo.listings = novos.concat(deOutros);
     } else {
       alvo = normalizeProduct(Object.assign({}, pr, {id: 'p_' + novoId(), listings}));
       state.products.push(alvo);
@@ -3086,7 +3713,7 @@ function adicionarMarketplace(presetKey){
     if(!confirm(`Já existe um marketplace chamado "${base.label}". Adicionar outro assim mesmo?\n\nO novo vai ganhar o ID "${idNovo}" (você pode trocar no cartão dele).`)) return;
   }
   const p = Object.assign({
-    id: idNovo, idManual: false, color: palette[state.profiles.length % palette.length],
+    id: idNovo, uid: 'u' + novoId(), idManual: false, color: palette[state.profiles.length % palette.length],
     dualAdPrice:false, variableFreight:false, variableFixedFee:false, tiered:false, tiers:[]
   }, base);
   normalizeProfile(p);
@@ -3169,13 +3796,17 @@ document.getElementById('resetBtn').onclick = ()=>{
 // ---------- SINCRONIZAÇÃO (Google Sheets) ----------
 const GAS_CODE = `// Versão do código. O sistema confere este número e se recusa a gravar numa planilha cujo
 // script seja mais antigo -- script antigo descarta em silêncio as colunas que não conhece.
-var SCRIPT_VERSION = 4;
+var SCRIPT_VERSION = 5;
 
 function doGet(e) {
   return comTrava(function () {
+    var rev = conferirEdicaoManual();
+    // pergunta leve, feita a cada minuto pelo sistema: só o número da revisão
+    if (e && e.parameter && e.parameter.so === 'rev') return jsonResponse({ok:true, rev:rev, version:SCRIPT_VERSION});
     var dados = readAll();
     dados.version = SCRIPT_VERSION;
-    dados.rev = revisaoAtual();
+    dados.rev = rev;
+    dados.historico = lerHistorico(300);
     return jsonResponse(dados);
   });
 }
@@ -3185,25 +3816,85 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     if (body.action !== 'saveAll') return jsonResponse({ok:false, error:'Ação desconhecida: ' + body.action});
     return comTrava(function () {
-      var atual = revisaoAtual();
-      // página antiga em cache em algum dispositivo: não conhece o formato atual e sobrescreveria tudo
+      // página antiga em cache em algum dispositivo: não junta alterações e sobrescreveria as dos outros
       if (body.baseRev === undefined || body.baseRev === null || !(Number(body.clientVersion) >= SCRIPT_VERSION)) {
         return jsonResponse({ok:false, outdatedClient:true,
           error:'Esta página do sistema está desatualizada. Recarregue com Ctrl+Shift+R e tente de novo.'});
       }
-      // outro dispositivo salvou depois da última leitura deste: gravar agora apagaria o trabalho dele
+      var atual = conferirEdicaoManual();
+      // alguém gravou depois da última leitura deste dispositivo: ele lê, junta e manda de novo
       if (Number(body.baseRev) !== atual) {
         return jsonResponse({ok:false, conflict:true, rev:atual,
-          error:'A planilha foi alterada em outro dispositivo depois da última leitura deste.'});
+          error:'A planilha foi alterada depois da última leitura deste dispositivo.'});
       }
       writeAll(body.state, body.textFields || {});
       var nova = atual + 1;
-      PropertiesService.getScriptProperties().setProperty('rev', String(nova));
+      var props = PropertiesService.getScriptProperties();
+      props.setProperty('rev', String(nova));
+      props.setProperty('assinatura', assinaturaDasAbas());
+      gravarHistorico(body.log);
       return jsonResponse({ok:true, rev:nova, version:SCRIPT_VERSION});
     });
   } catch (err) {
     return jsonResponse({ok:false, error: err.message});
   }
+}
+
+// Edição feita direto na planilha não passa pelo sistema e não mudava a revisão -- a próxima
+// gravação de um dispositivo apagava a edição sem ninguém ver. Agora o script guarda uma
+// "impressão digital" das abas a cada gravação; se ela não bate, alguém editou à mão: a revisão
+// avança e os dispositivos leem a planilha (e juntam) antes de gravar.
+function conferirEdicaoManual() {
+  var props = PropertiesService.getScriptProperties();
+  var rev = Number(props.getProperty('rev')) || 0;
+  var guardada = props.getProperty('assinatura');
+  var agora = assinaturaDasAbas();
+  if (guardada !== null && guardada !== agora) {
+    rev = rev + 1;
+    props.setProperty('rev', String(rev));
+  }
+  if (guardada !== agora) props.setProperty('assinatura', agora);
+  return rev;
+}
+
+function assinaturaDasAbas() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var partes = ['Marketplaces', 'Produtos', 'Padroes'].map(function (n) {
+    var sh = ss.getSheetByName(n);
+    return sh ? JSON.stringify(sh.getDataRange().getValues()) : '';
+  });
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, partes.join('|'), Utilities.Charset.UTF_8);
+  return Utilities.base64Encode(bytes);
+}
+
+// Histórico: uma linha por campo alterado, com quem e quando. Guarda as 5000 mais recentes.
+var HIST_HEADERS = ['quando', 'quem', 'onde', 'campo', 'antes', 'depois'];
+function gravarHistorico(log) {
+  if (!log || !log.length) return;
+  var sh = getOrCreateSheet('Historico', HIST_HEADERS);
+  var linhas = log.slice(0, 2000).map(function (l) {
+    return HIST_HEADERS.map(function (h) {
+      var v = l[h];
+      return (v === undefined || v === null || v === '') ? '' : "'" + String(v); // texto puro: nada vira data nem fórmula
+    });
+  });
+  var r = sh.getRange(sh.getLastRow() + 1, 1, linhas.length, HIST_HEADERS.length);
+  r.setNumberFormat('@');
+  r.setValues(linhas);
+  var excesso = sh.getLastRow() - 1 - 5000;
+  if (excesso > 0) sh.deleteRows(2, excesso);
+}
+function lerHistorico(n) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Historico');
+  if (!sh) return [];
+  var ultima = sh.getLastRow();
+  if (ultima < 2) return [];
+  var ini = Math.max(2, ultima - n + 1);
+  return sh.getRange(ini, 1, ultima - ini + 1, HIST_HEADERS.length).getValues().reverse().map(function (r) {
+    var o = {};
+    HIST_HEADERS.forEach(function (h, i) { o[h] = (r[i] instanceof Date) ? r[i].toISOString() : String(r[i]); });
+    return o;
+  });
 }
 
 // Uma gravação por vez. Sem isto, dois dispositivos salvando juntos intercalam o 'limpa a aba'
@@ -3324,9 +4015,12 @@ document.getElementById('connectBtn').onclick = ()=>{
   const url = document.getElementById('gasUrlInput').value.trim();
   if(!url){ toast('Cole a URL do Web App do Apps Script primeiro.', 'err'); return; }
   gasUrl = url;
-  revPlanilha = null; scriptDesatualizado = false; versaoScript = null;
+  revPlanilha = null; scriptDesatualizado = false; versaoScript = null; historicoPlanilha = null;
   store.set('mkt_pricing_gas_url', gasUrl);
+  baseSync = null; baseCarregada = carregarBase();   // a base é de uma planilha só: outra URL começa do zero
   renderSyncPill();
+  renderUsuario();
+  if(!usuario) pedirNome();
   pullFromSheets(true);
 };
 document.getElementById('syncNowBtn').onclick = ()=>{
@@ -3336,8 +4030,10 @@ document.getElementById('syncNowBtn').onclick = ()=>{
 document.getElementById('disconnectBtn').onclick = ()=>{
   if(!confirm('Desconectar do Google Sheets? Os dados continuam salvos neste navegador, mas deixam de sincronizar.')) return;
   gasUrl = '';
-  revPlanilha = null; scriptDesatualizado = false; versaoScript = null;
+  revPlanilha = null; scriptDesatualizado = false; versaoScript = null; historicoPlanilha = null;
   store.del('mkt_pricing_gas_url');
+  esquecerBase();
+  renderUsuario();
   lastSyncOk = null; lastSyncTime = null; lastSyncError='';
   renderSyncPill();
   renderSyncView();
@@ -3511,12 +4207,37 @@ irPara('produtos');
 avisaMigracao();
 setTimeout(()=>{ if(!avisouRepetidosNaSessao) avisaSeHaRepetidos(); }, 1200);
 if(gasUrl) pullFromSheets(false);
-// Uma aba aberta há horas não sabe o que outro dispositivo salvou. Ao voltar para ela, relê a
-// planilha -- desde que não haja alteração local esperando envio, que seria descartada.
+// Uma aba aberta há horas não sabe o que os outros salvaram. Ao voltar para ela, relê a planilha
+// (e junta com o que houver aqui).
 document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState !== 'visible' || !gasUrl || syncing || syncTimer) return;
+  if(document.visibilityState !== 'visible' || !gasUrl || syncOcupado()) return;
   pullFromSheets(false);
 });
+setInterval(conferirSeMudou, 60000);
+// Fechar a aba com alteração ainda não enviada: o navegador pergunta. (Se fechar mesmo assim, a
+// alteração fica guardada aqui e vai para a planilha na próxima vez que o sistema abrir.)
+window.addEventListener('beforeunload', (e)=>{
+  if(gasUrl && (syncOcupado() || temPendencia())){ e.preventDefault(); e.returnValue = ''; }
+});
+document.getElementById('usuarioBtn').onclick = pedirNome;
+document.getElementById('usuarioInput').addEventListener('change', (e)=>{ definirUsuario(e.target.value); toast(usuario ? 'Nome salvo neste dispositivo.' : 'Nome apagado.', 'ok'); });
+document.getElementById('historicoBusca').addEventListener('input', debounce(renderHistorico, 150));
+document.getElementById('conflitosLista').addEventListener('click', (e)=>{
+  const usar = e.target.closest('[data-usar]'), visto = e.target.closest('[data-visto]');
+  if(usar) usarValorDeles(Number(usar.dataset.usar));
+  else if(visto){
+    conflitosRecentes.splice(Number(visto.dataset.visto), 1);
+    store.set(CONFLITOS_KEY, JSON.stringify(conflitosRecentes));
+    renderConflitos();
+  }
+});
+document.getElementById('conflitosLimpar').onclick = ()=>{
+  conflitosRecentes = [];
+  store.set(CONFLITOS_KEY, '[]');
+  renderConflitos();
+};
+renderUsuario();
+if(gasUrl && !usuario) setTimeout(()=> toast('O histórico e os avisos mostram quem mudou o quê. Clique em "Definir seu nome", embaixo na barra lateral, ou use a tela Sincronização.', 'warn', 'Qual é o seu nome?'), 2500);
 </script>
 </body>
 </html>
