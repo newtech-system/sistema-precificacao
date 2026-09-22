@@ -465,6 +465,21 @@
     padding:6px 11px;border-radius:var(--r-xs);cursor:pointer;}
   .mini-toggle button.on{background:var(--brand);color:var(--brand-ink);font-weight:600;}
 
+  /* ============ unificação e importação ============ */
+  .uni-grupo{border:1px solid var(--line);border-radius:var(--r);padding:11px 13px;margin:8px 0;background:var(--surface-2);}
+  .uni-grupo.uni-atencao{border-color:var(--warn-line);}
+  .uni-head{display:flex;align-items:center;gap:9px;cursor:pointer;flex-wrap:wrap;font-size:13px;}
+  .uni-head input, .uni-linha input, .uni-prod input{accent-color:var(--brand);margin:0;}
+  .uni-prod{display:flex;align-items:center;gap:10px;padding:5px 0 0 25px;font-size:12px;flex-wrap:wrap;}
+  .uni-chips{display:inline-flex;gap:5px;flex-wrap:wrap;}
+  .uni-chip{display:inline-flex;align-items:center;font-size:11px;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--r-pill);padding:1px 8px;color:var(--ink-2);}
+  .uni-chip .mkt-dot{width:6px;height:6px;margin-right:5px;}
+  .uni-custo{margin-left:auto;color:var(--ink-2);font-variant-numeric:tabular-nums;}
+  .uni-linha{display:flex;align-items:center;gap:9px;padding:7px 2px;font-size:12px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap;}
+  .muted{color:var(--ink-mute);}
+  .imp-resumo{display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--ink-2);margin-bottom:12px;}
+
   /* ============ avisos flutuantes ============ */
   #toasts{position:fixed;right:20px;bottom:20px;z-index:120;display:flex;flex-direction:column;gap:10px;
     max-width:min(400px,calc(100vw - 40px));pointer-events:none;}
@@ -621,6 +636,7 @@
     <div id="skuForm" style="display:none;"></div>
     <div id="importWizard" style="display:none;"></div>
     <div id="exportWizard" style="display:none;"></div>
+    <div id="unifyWizard" style="display:none;"></div>
   </div>
 </aside>
 
@@ -753,17 +769,66 @@ function sufixosDe(pr){
 }
 // Todos os sufixos dos marketplaces cadastrados, do mais longo para o mais curto -- assim
 // "-magalulolo" é reconhecido inteiro antes de "-magalu" ser sequer testado.
-function sufixosConhecidos(profiles){
+// Sufixos aprendidos dos próprios SKUs. Se a grande maioria dos anúncios de um marketplace termina
+// com o mesmo pedaço (ex.: "-meli") e esse pedaço (quase) não aparece nos outros marketplaces, ele
+// é o sufixo daquele marketplace -- mesmo que não seja o ID nem o nome cadastrado. As exigências
+// (3+ letras, não só números, 2+ anúncios, metade dos anúncios do marketplace, 90% das ocorrências nele) evitam
+// confundir tamanho ou cor ("-P", "-azul") com marketplace.
+function aprenderSufixos(linhas, profiles){
+  const porToken = new Map();   // token -> Map(marketplace -> quantos)
+  const total = new Map();      // marketplace -> anúncios que não usam o sufixo oficial dele
+  // anúncio que já termina com o ID ou o nome do próprio marketplace não conta nem a favor nem
+  // contra: um catálogo com uns '-mercadolivre' misturados aos '-meli' ainda tem '-meli' de padrão
+  const oficiais = new Map();
+  (profiles||[]).forEach(pr=> oficiais.set(pr.id, sufixosDe(pr)));
+  (linhas||[]).forEach(l=>{
+    const mid = String(l.marketplaceId||'');
+    if(!mid) return;
+    const s = String(l.sku||'').trim();
+    const i = s.lastIndexOf('-');
+    const tok = i > 0 ? slugDoRotulo(s.slice(i + 1)) : '';
+    if(tok && (oficiais.get(mid)||[]).indexOf(tok) !== -1) return;
+    total.set(mid, (total.get(mid)||0) + 1);
+    if(!tok) return;
+    if(!porToken.has(tok)) porToken.set(tok, new Map());
+    const m = porToken.get(tok);
+    m.set(mid, (m.get(mid)||0) + 1);
+  });
+  const out = new Map();
+  porToken.forEach((m, tok)=>{
+    if(tok.length < 3 || /^[0-9]+$/.test(tok)) return;
+    let soma = 0, dono = null, maior = 0;
+    m.forEach((n, mid)=>{ soma += n; if(n > maior){ maior = n; dono = mid; } });
+    if(maior < 2 || maior < 0.5 * total.get(dono) || maior < 0.9 * soma) return;
+    if(!out.has(dono)) out.set(dono, []);
+    out.get(dono).push([tok, maior]);
+  });
+  out.forEach((lista, mid)=> out.set(mid, lista.sort((a,b)=> b[1] - a[1]).map(x=> x[0])));
+  return out;
+}
+function tokensDe(mapa){
+  const t = [];
+  mapa.forEach(v=> v.forEach(x=>{ if(t.indexOf(x) === -1) t.push(x); }));
+  return t;
+}
+
+// extras = sufixos aprendidos dos SKUs (ver aprenderSufixos)
+function sufixosConhecidos(profiles, extras){
   const lista = [];
   (profiles||[]).forEach(pr=> sufixosDe(pr).forEach(s=>{ if(lista.indexOf(s) === -1) lista.push(s); }));
+  (extras||[]).forEach(s=>{ if(s && lista.indexOf(s) === -1) lista.push(s); });
   return lista.sort((a,b)=> b.length - a.length);
 }
-// SKU sem o sufixo do marketplace: "07-01-46-shopee" -> "07-01-46", "07-01-46-meli" -> "07-01-46"
-function skuBase(sku, profiles){
-  const s = String(sku||'').trim();
-  const baixo = s.toLowerCase();
-  for(const suf of sufixosConhecidos(profiles)){
-    if(baixo.length > suf.length + 1 && baixo.endsWith('-' + suf)) return s.slice(0, -(suf.length + 1));
+// Tira os sufixos de marketplace do fim do SKU. Repete (até 3 vezes) para limpar SKU que ganhou
+// sufixo em dobro, como o "07-01-46-meli-mercadolivre" que a importação antiga produzia.
+function skuBase(sku, profiles, extras){
+  let s = String(sku||'').trim();
+  const sufs = sufixosConhecidos(profiles, extras);
+  for(let volta = 0; volta < 3; volta++){
+    const baixo = s.toLowerCase();
+    const suf = sufs.find(x=> baixo.length > x.length + 1 && baixo.endsWith('-' + x));
+    if(!suf) break;
+    s = s.slice(0, -(suf.length + 1));
   }
   return s;
 }
@@ -812,79 +877,12 @@ function anuncioPorId(id){
 }
 function produtoPorId(id){ return state.products.find(p=> p.id === id) || null; }
 
-// Junta produtos que são o mesmo item e ficaram separados -- por exemplo porque o sufixo "-meli"
-// não era reconhecido. Só junta com o mesmo SKU base, os mesmos custos e marketplaces que não se
-// repetem; nunca separa nada e não muda nenhum número. Também corrige SKUs de canal que o sistema
-// montou com o nome do marketplace em vez do ID.
-function planoDeUnificacao(){
-  const chaveDeCusto = pr => pr.costOverride ? [pr.cogs, pr.fixedCost, pr.misc, pr.taxPct, pr.marketingPct].join('|') : String(pr.cogs);
-  const grupos = new Map();
-  state.products.forEach(prod=>{
-    const base = skuBase(prod.sku, state.profiles);
-    const chave = base.toLowerCase() + '#' + prod.costOverride + '#' + chaveDeCusto(prod);
-    if(!grupos.has(chave)) grupos.set(chave, {base, produtos: []});
-    grupos.get(chave).produtos.push(prod);
-  });
-  const juncoes = [], skusDeProduto = [], skusDeCanal = [];
-  grupos.forEach(g=>{
-    const destinos = [];
-    g.produtos.forEach(prod=>{
-      const d = destinos.find(x=> !prod.listings.some(l=> x.mids.has(l.marketplaceId)));
-      if(d){ d.absorve.push(prod); prod.listings.forEach(l=> d.mids.add(l.marketplaceId)); }
-      else destinos.push({prod, absorve: [], mids: new Set(prod.listings.map(l=> l.marketplaceId))});
-    });
-    destinos.forEach(d=>{
-      if(d.absorve.length) juncoes.push({destino: d.prod, absorve: d.absorve, base: g.base});
-      else if(d.prod.sku !== g.base) skusDeProduto.push({prod: d.prod, base: g.base});
-    });
-  });
-  // SKU de canal montado com o nome ("-magalumm..." a partir do rótulo) quando o ID é outro
-  state.products.forEach(prod=>{
-    const base = skuBase(prod.sku, state.profiles);
-    prod.listings.forEach(l=>{
-      const pr = state.profiles.find(x=> x.id === l.marketplaceId);
-      if(!pr) return;
-      const pelaEtiqueta = base + '-' + slugDoRotulo(pr.label), certo = base + '-' + sufixoPreferido(pr);
-      if(pelaEtiqueta !== certo && l.sku === pelaEtiqueta) skusDeCanal.push({lst: l, de: l.sku, para: certo});
-    });
-  });
-  return {juncoes, skusDeProduto, skusDeCanal};
-}
-function aplicarUnificacao(plano){
-  plano.skusDeCanal.forEach(x=>{ x.lst.sku = x.para; });
-  plano.skusDeProduto.forEach(x=>{ x.prod.sku = x.base; });
-  const removidos = new Set();
-  plano.juncoes.forEach(j=>{
-    j.destino.sku = j.base;
-    j.absorve.forEach(outro=>{ j.destino.listings.push(...outro.listings); removidos.add(outro.id); });
-  });
-  state.products = state.products.filter(pr=> !removidos.has(pr.id));
-  return removidos.size;
-}
-function unificarProdutosRepetidos(){
-  const plano = planoDeUnificacao();
-  const nJuncoes = plano.juncoes.reduce((a,j)=> a + j.absorve.length, 0);
-  if(!nJuncoes && !plano.skusDeProduto.length && !plano.skusDeCanal.length){
-    toast('Nenhum produto repetido: cada SKU base já está num produto só.', 'ok', 'Nada para unificar');
-    return;
-  }
-  const exemplos = plano.juncoes.slice(0, 5).map(j=> '  ' + j.base + ': ' + [j.destino].concat(j.absorve).map(x=> x.sku).join(' + ')).join('\n');
-  const msg = (nJuncoes ? nJuncoes + ' produto(s) vão ser juntados a outro com o mesmo SKU base e o mesmo custo:\n' + exemplos + (plano.juncoes.length > 5 ? '\n  ...' : '') + '\n\n' : '')
-    + (plano.skusDeCanal.length ? plano.skusDeCanal.length + ' SKU(s) de anúncio vão trocar o sufixo do nome do marketplace pelo ID (ex.: ' + plano.skusDeCanal[0].de + ' -> ' + plano.skusDeCanal[0].para + ').\n\n' : '')
-    + (plano.skusDeProduto.length ? plano.skusDeProduto.length + ' produto(s) vão ter o SKU base corrigido (sem o sufixo do marketplace).\n\n' : '')
-    + 'Preços, custos e margens não mudam. Continuar?';
-  if(!confirm(msg)) return;
-  const removidos = aplicarUnificacao(plano);
-  saveState();
-  renderProdutos();
-  toast((removidos ? removidos + ' produto(s) unificados. ' : '') + (plano.skusDeCanal.length ? plano.skusDeCanal.length + ' SKU(s) de anúncio corrigidos. ' : '') + 'Nenhum preço mudou.', 'ok', 'Catálogo unificado');
-}
-
 // Linhas planas (formato antigo, backup antigo ou planilha do Google) -> produtos com anúncios.
 // Só junta o que é o mesmo produto de verdade: mesmo productId ou, sem ele, mesmo SKU base E os
 // mesmos custos. Um produto com CMV diferente entre marketplaces fica separado -- juntar obrigaria
 // a escolher um dos números sem avisar, e isso mudaria preço e margem.
 function agruparEmProdutos(rows, profiles){
+  const extras = tokensDe(aprenderSufixos(rows, profiles));
   const produtos = [];
   const porChave = new Map();
   const basesVistas = new Map();   // base -> quantos produtos diferentes nasceram com ela
@@ -894,7 +892,7 @@ function agruparEmProdutos(rows, profiles){
     normalizeSku(r);
     const temProductId = !!String(r.productId||'').trim();
     if(!temProductId) legado++;
-    const base = String(r.productSku||'').trim() || skuBase(r.sku, profiles);
+    const base = String(r.productSku||'').trim() || skuBase(r.sku, profiles, extras);
     const custos = r.costOverride ? [r.cogs, r.fixedCost, r.misc, r.taxPct, r.marketingPct].join('|') : String(r.cogs);
     const chave = temProductId ? 'id:' + r.productId : 'sku:' + base + '#' + r.costOverride + '#' + custos;
     const mid = String(r.marketplaceId||'');
@@ -1228,19 +1226,42 @@ const MISSING_PROFILE = {id:'__missing__', label:'Marketplace removido', color:'
   commission:0, service:0, transaction:0, fixedFee:0, dualAdPrice:false, variableFreight:false, variableFixedFee:false, missing:true};
 const profileOf = id => state.profiles.find(p=>p.id===id) || MISSING_PROFILE;
 const uid = () => 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const mktSlug = id => sufixoPreferido(profileOf(id));
+// Sufixos aprendidos do catálogo atual, refeitos só quando algum dado muda.
+let cacheAprendidos = {versao: -1, mapa: new Map(), tokens: []};
+function aprendidosAtuais(){
+  if(cacheAprendidos.versao !== versaoDados){
+    const mapa = aprenderSufixos(listagens(), state.profiles);
+    cacheAprendidos = {versao: versaoDados, mapa, tokens: tokensDe(mapa)};
+  }
+  return cacheAprendidos;
+}
+function baseDoSku(sku){ return skuBase(sku, state.profiles, aprendidosAtuais().tokens); }
+// Sufixo de SKU novo: o que os seus próprios anúncios daquele marketplace já usam; se ainda não
+// há padrão, o ID do marketplace (ou o nome, quando o ID foi gerado pelo sistema).
+function sufixoParaGerar(mid, mapa){
+  const m = mapa || aprendidosAtuais().mapa;
+  return (m.get(mid) || [])[0] || sufixoPreferido(profileOf(mid));
+}
+function sufixosDoMarketplace(mid, mapa){
+  const m = mapa || aprendidosAtuais().mapa;
+  const lista = [sufixoParaGerar(mid, m)];
+  sufixosDe(profileOf(mid)).concat(m.get(mid) || []).forEach(s=>{ if(s && lista.indexOf(s) === -1) lista.push(s); });
+  return lista;
+}
+const mktSlug = id => sufixoParaGerar(id);
 
 // Aplica o sufixo do marketplace ao SKU. \u00c9 idempotente (n\u00e3o gera "-shopee-shopee" ao
 // reimportar uma planilha j\u00e1 exportada) e troca o sufixo quando o SKU vem carimbado com
 // o nome de OUTRO marketplace cadastrado -- caso do ciclo de edi\u00e7\u00e3o em massa.
-function applyMktSuffix(skuRaw, marketplaceId){
+// aprendidos: sufixos aprendidos a usar (a importação passa os que incluem a própria planilha)
+function applyMktSuffix(skuRaw, marketplaceId, aprendidos){
+  const mapa = aprendidos || aprendidosAtuais().mapa;
   const s = String(skuRaw||'').trim();
-  const pr = profileOf(marketplaceId);
-  // já termina com um sufixo deste marketplace (pelo ID ou pelo nome): fica como está
   const baixo = s.toLowerCase();
-  if(sufixosDe(pr).some(x=> baixo.endsWith('-' + x))) return s;
+  // já termina com um sufixo deste marketplace (ID, nome ou aprendido): fica como está
+  if(sufixosDoMarketplace(marketplaceId, mapa).some(x=> baixo.endsWith('-' + x))) return s;
   // termina com o de outro marketplace: troca pelo deste
-  return skuBase(s, state.profiles) + '-' + sufixoPreferido(pr);
+  return skuBase(s, state.profiles, tokensDe(mapa)) + '-' + sufixoParaGerar(marketplaceId, mapa);
 }
 
 function roundToBreakpoint(v){
@@ -1401,7 +1422,7 @@ function renderTopDisclaimer(){
 }
 
 function wizardVisivel(){
-  return ['skuForm','importWizard','exportWizard'].some(id=>{
+  return ['skuForm','importWizard','exportWizard','unifyWizard'].some(id=>{
     const el = document.getElementById(id);
     return el && el.style.display === 'block';
   });
@@ -1426,7 +1447,7 @@ function fecharPainel(){
 }
 // Fechar o painel encerra o que estivesse aberto dentro dele, seja formulário ou assistente.
 function fecharTudoDoPainel(){
-  closeSkuForm(); closeImportWizard(); closeExportWizard();
+  closeSkuForm(); closeImportWizard(); closeExportWizard(); closeUnifyWizard();
 }
 document.getElementById('panelClose').onclick = fecharTudoDoPainel;
 document.getElementById('scrim').onclick = fecharTudoDoPainel;
@@ -2078,8 +2099,9 @@ function openSkuForm(id){
     // SKU de canal vazio volta ao padrão
     ativos.forEach(mid=>{ if(!canais[mid].sku) canais[mid].sku = applyMktSuffix(pr.sku, mid); });
 
-    const outro = state.products.find(x=> x.sku === pr.sku && x.id !== editingSkuId);
-    if(outro && !confirm(`Já existe um produto com o SKU "${pr.sku}" (${outro.name}). Salvar assim mesmo como produto separado?`)) return;
+    const minhaBase = baseDoSku(pr.sku).toLowerCase();
+    const outro = state.products.find(x=> x.id !== editingSkuId && baseDoSku(x.sku).toLowerCase() === minhaBase);
+    if(outro && !confirm(`Já existe o produto "${outro.sku}" (${outro.name}), com anúncio em ${outro.listings.map(l=> profileOf(l.marketplaceId).label).join(', ') || 'nenhum marketplace'}.\n\nPara vender em mais um marketplace, o certo é abrir aquele produto e marcar o canal -- assim o custo fica num lugar só.\n\nSalvar assim mesmo como produto separado?`)) return;
     const conflitos = ativos.filter(mid=> state.products.some(x=> x.id !== editingSkuId
       && x.listings.some(l=> l.marketplaceId === mid && l.sku === canais[mid].sku)));
     if(conflitos.length && !confirm(`O SKU de canal já está em uso por outro produto em: ${conflitos.map(m=> profileOf(m).label).join(', ')}. Salvar assim mesmo?`)) return;
@@ -2597,8 +2619,8 @@ function buildImportSku(row, marketplaceId){
   const skuRaw = String(g('sku')||'').trim();
   // SKU que já é o de um anúncio neste marketplace entra como está. Forçar o sufixo sempre
   // duplicava, na reimportação, qualquer SKU fora do padrão (ex.: XPTO-99 virava XPTO-99-shein)
-  const jaExiste = listagens().some(v=> v.sku === skuRaw && v.marketplaceId === marketplaceId);
-  const sku = jaExiste ? skuRaw : applyMktSuffix(skuRaw, marketplaceId);
+  const existente = listagens().find(v=> v.marketplaceId === marketplaceId && v.sku.toLowerCase() === skuRaw.toLowerCase());
+  const sku = existente ? existente.sku : applyMktSuffix(skuRaw, marketplaceId, importState.aprendidos);
   const num = (v, fallback) => { if(v===undefined) return fallback; const n = parseNumberBR(v); return isNaN(n) ? fallback : n; };
   const priceMapped = num(g('price'), null);
   const marginMapped = num(g('marginTarget'), null);
@@ -2626,123 +2648,199 @@ function buildImportSku(row, marketplaceId){
   };
 }
 
+// Decide, antes de gravar qualquer coisa, para onde vai cada linha da planilha. A prévia mostra
+// exatamente este plano, e o botão Confirmar aplica o mesmo plano -- não existe uma segunda regra
+// escondida na hora de salvar.
+//   atualizar -> já existe anúncio com esse SKU nesse marketplace
+//   juntar    -> produto existente com o mesmo SKU base, sem anúncio nesse marketplace
+//   novo      -> produto novo
+//   agrupa    -> outro marketplace do mesmo produto novo criado por uma linha acima
+//   repetida  -> mesma linha (SKU + marketplace) duas vezes na planilha; vale a última
+//   pular     -> já existe e a escolha foi manter o que está
+function planejarImportacao(candidates, strategy, aprendidos){
+  const tokens = tokensDe(aprendidos);
+  const base = s => skuBase(s, state.profiles, tokens);
+  const porCanal = new Map();
+  state.products.forEach(p=> p.listings.forEach(l=> porCanal.set(l.marketplaceId + '::' + l.sku.toLowerCase(), {prod:p, lst:l})));
+  const porBase = new Map();
+  state.products.forEach(p=>{
+    const k = base(p.sku).toLowerCase();
+    if(!porBase.has(k)) porBase.set(k, []);
+    porBase.get(k).push({prod:p, mids:new Set(p.listings.map(l=> l.marketplaceId)), sku:p.sku, cogs:p.cogs, novo:false});
+  });
+  const passos = [];
+  candidates.forEach(c=>{
+    const kc = c.marketplaceId + '::' + c.sku.toLowerCase();
+    const ex = porCanal.get(kc);
+    if(ex && ex.prod){
+      passos.push({c, acao: strategy === 'skip' ? 'pular' : 'atualizar', prod: ex.prod, lst: ex.lst, custoAntes: ex.prod.cogs});
+      return;
+    }
+    if(ex && ex.passo){ passos.push({c, acao:'repetida', anterior: ex.passo}); return; }
+    const skuPai = base(c.productSku || c.sku);
+    const k = skuPai.toLowerCase();
+    if(!porBase.has(k)) porBase.set(k, []);
+    const grupo = porBase.get(k);
+    let alvo = grupo.find(x=> !x.mids.has(c.marketplaceId));
+    let passo;
+    if(alvo){
+      alvo.mids.add(c.marketplaceId);
+      passo = {c, acao: alvo.novo ? 'agrupa' : 'juntar', alvo, custoAntes: alvo.novo ? null : alvo.cogs};
+    } else {
+      alvo = {prod:null, mids:new Set([c.marketplaceId]), sku: skuPai, cogs: c.cogs, novo:true};
+      grupo.push(alvo);
+      passo = {c, acao:'novo', alvo};
+    }
+    passos.push(passo);
+    porCanal.set(kc, {passo});
+  });
+  return passos;
+}
+
+function aplicarImportacao(passos, strategy){
+  const cont = {novosProdutos:0, emExistentes:0, agrupados:0, atualizados:0, pulados:0};
+  const custosVistos = new Map();
+  const aplicaProduto = (prod, c)=>{
+    prod.name = c.name || prod.name;
+    prod.cogs = c.cogs; prod.costOverride = c.costOverride;
+    prod.fixedCost = c.fixedCost; prod.misc = c.misc; prod.taxPct = c.taxPct; prod.marketingPct = c.marketingPct;
+    if(!custosVistos.has(prod.id)) custosVistos.set(prod.id, new Set());
+    custosVistos.get(prod.id).add(String(c.cogs));
+  };
+  const aplicaAnuncio = (lst, c)=>{
+    lst.mode = c.mode; lst.price = c.price; lst.marginTarget = c.marginTarget;
+    lst.coupon = c.coupon; lst.freightNet = c.freightNet; lst.mktFixedFee = c.mktFixedFee;
+  };
+  passos.forEach(pa=>{
+    const c = pa.c;
+    if(pa.acao === 'pular'){ cont.pulados++; return; }
+    if(pa.acao === 'atualizar'){ aplicaProduto(pa.prod, c); aplicaAnuncio(pa.lst, c); cont.atualizados++; return; }
+    if(pa.acao === 'repetida'){
+      const a = pa.anterior;
+      if(a.lstCriado){ aplicaAnuncio(a.lstCriado, c); aplicaProduto(a.alvo.prod, c); }
+      cont.atualizados++;
+      return;
+    }
+    const lst = normalizeListing({id: novoId(), marketplaceId: c.marketplaceId, sku: c.sku});
+    aplicaAnuncio(lst, c);
+    pa.lstCriado = lst;
+    const alvo = pa.alvo;
+    if(!alvo.prod){
+      alvo.prod = normalizeProduct({id: 'p_' + novoId(), sku: alvo.sku, name: c.name, listings: []});
+      aplicaProduto(alvo.prod, c);
+      state.products.push(alvo.prod);
+      cont.novosProdutos++;
+    } else if(pa.acao === 'juntar'){
+      // "manter o que já existe" também vale para o custo do produto que recebe o canal novo
+      if(strategy !== 'skip') aplicaProduto(alvo.prod, c);
+      cont.emExistentes++;
+    } else {
+      aplicaProduto(alvo.prod, c);
+      cont.agrupados++;
+    }
+    alvo.prod.listings.push(lst);
+  });
+  let conflitosDeCusto = 0;
+  custosVistos.forEach(s=>{ if(s.size > 1) conflitosDeCusto++; });
+  cont.conflitosDeCusto = conflitosDeCusto;
+  return cont;
+}
+
 function renderImportStep3(){
   const box = document.getElementById('importWizard');
-  const candidates = [];
+  // pares (linha, marketplace) primeiro: os SKUs da planilha ajudam a aprender os sufixos junto
+  // com os anúncios que já existem -- um lote só de "-meli" já ensina o sistema
+  const pares = [];
   let ignoradas = 0;
   if(importState.useRowMarketplace){
     const idx = importState.mapping.marketplace;
     importState.rows.forEach(row=>{
       const mktId = matchMarketplaceByName(row[idx]);
-      if(mktId) candidates.push(buildImportSku(row, mktId));
-      else ignoradas++;
+      if(mktId) pares.push({row, mktId}); else ignoradas++;
     });
   } else {
-    importState.rows.forEach(row=>{
-      importState.marketplaces.forEach(mktId=> candidates.push(buildImportSku(row, mktId)));
-    });
+    importState.rows.forEach(row=> importState.marketplaces.forEach(mktId=> pares.push({row, mktId})));
   }
-  const existingKeys = new Set(listagens().map(s => s.sku+'::'+s.marketplaceId));
-  const dupCount = candidates.filter(c => existingKeys.has(c.sku+'::'+c.marketplaceId)).length;
+  const skuIdx = importState.mapping.sku;
+  importState.aprendidos = aprenderSufixos(listagens().concat(pares.map(p=> ({sku: String(p.row[skuIdx]||'').trim(), marketplaceId: p.mktId}))), state.profiles);
+  const candidates = pares.map(p=> buildImportSku(p.row, p.mktId));
   importState.preview = candidates;
 
-  const rowsHtml = candidates.map(c=>{
-    const p = profileOf(c.marketplaceId);
-    const r = calcSku(p, c);
-    const isDup = existingKeys.has(c.sku+'::'+c.marketplaceId);
-    return `<tr>
-      <td class="cell-sku">${esc(c.sku)}${isDup?' <span class="tag">já existe</span>':''}</td>
-      <td class="cell-name">${esc(c.name)}</td>
-      <td><span class="mkt-dot" style="background:${esc(p.color)}"></span>${esc(p.label)}</td>
-      <td class="num">${r.error ? '--' : brl(r.price)}</td>
-      <td class="num ${!r.error && r.marginPct>=0?'pos':'neg'}">${r.error ? 'inviável' : pct(r.marginPct)}</td>
-    </tr>`;
-  }).join('');
+  const temExistente = planejarImportacao(candidates, 'overwrite', importState.aprendidos).some(pa=> pa.acao === 'atualizar');
+  let strategy = 'overwrite';
 
-  const origem = importState.useRowMarketplace
-    ? `${candidates.length} cadastro(s), um por linha, cada um no marketplace indicado na própria planilha.${ignoradas?` ${ignoradas} linha(s) foram ignoradas por não bater com nenhum marketplace cadastrado.`:''}`
-    : `${candidates.length} cadastro(s) serão criados (${importState.rows.length} linha(s) &times; ${importState.marketplaces.length} marketplace(s)).`;
-
-  box.innerHTML = `
-    ${wizardNavHtml(3)}
-    <p class="preview-note">${origem}
-      ${dupCount ? `<br><strong style="color:var(--accent);">${dupCount} já existem</strong> (mesmo SKU + marketplace) -- escolha abaixo o que fazer.` : ''}
-    </p>
-    ${dupCount ? `
-    <div class="radio-row">
-      <label class="radio-opt"><input type="radio" name="dupstrategy" value="overwrite" checked> Sobrescrever os que já existem</label>
-      <label class="radio-opt"><input type="radio" name="dupstrategy" value="skip"> Pular os que já existem (manter o cadastro atual)</label>
-    </div>` : ''}
-    <div class="preview-scroll">
-      <table>
-        <thead><tr><th>SKU</th><th>Nome</th><th>Marketplace</th><th class="num">Preço</th><th class="num">Margem</th></tr></thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-    </div>
-    <div class="form-actions">
-      <button class="btn primary" id="imp_confirm">Confirmar importação</button>
-      <button class="btn" id="imp_back2">Voltar</button>
-      <button class="btn" id="imp_cancel3">Cancelar</button>
-    </div>
-  `;
-  document.getElementById('imp_cancel3').onclick = closeImportWizard;
-  document.getElementById('imp_back2').onclick = renderImportStep2;
-  document.getElementById('imp_confirm').onclick = ()=>{
-    if(candidates.length === 0){ toast('Nenhuma linha válida para importar.', 'err'); return; }
-    const dupRadio = box.querySelector('input[name=dupstrategy]:checked');
-    const strategy = dupRadio ? dupRadio.value : 'overwrite';
-    // Cada linha da planilha é um anúncio. Ele entra, nesta ordem: no anúncio que já tem esse
-    // mesmo SKU no mesmo marketplace; num produto que já existe com o mesmo SKU pai (vira um canal
-    // novo dele); ou num produto novo. O custo da linha vale para o produto inteiro -- é o que faz
-    // "mudar o custo na planilha" atualizar todos os marketplaces de uma vez.
-    let novosProdutos = 0, novosAnuncios = 0, atualizados = 0, pulados = 0;
-    const custosVistos = new Map();   // produto -> custos que apareceram nesta importação
-    const aplicaProduto = (prod, c)=>{
-      prod.name = c.name || prod.name;
-      prod.cogs = c.cogs; prod.costOverride = c.costOverride;
-      prod.fixedCost = c.fixedCost; prod.misc = c.misc; prod.taxPct = c.taxPct; prod.marketingPct = c.marketingPct;
-      if(!custosVistos.has(prod.id)) custosVistos.set(prod.id, new Set());
-      custosVistos.get(prod.id).add(String(c.cogs));
+  function desenhar(){
+    const passos = planejarImportacao(candidates, strategy, importState.aprendidos);
+    const n = a => passos.filter(pa=> pa.acao === a).length;
+    const mudaCusto = pa => (pa.acao === 'atualizar' || (pa.acao === 'juntar' && strategy !== 'skip'))
+      && pa.custoAntes !== null && Math.abs(pa.custoAntes - pa.c.cogs) > 1e-9;
+    const nMudaCusto = new Set(passos.filter(mudaCusto).map(pa=> (pa.prod || pa.alvo.prod).id)).size;
+    const destino = pa=>{
+      const custo = mudaCusto(pa) ? ` <span class="tag">custo ${brl(pa.custoAntes)} &rarr; ${brl(pa.c.cogs)}</span>` : '';
+      if(pa.acao === 'atualizar') return 'Atualiza o anúncio' + custo;
+      if(pa.acao === 'pular') return '<span class="muted">Pula (já existe)</span>';
+      if(pa.acao === 'repetida') return '<span class="muted">Linha repetida: vale a última</span>';
+      if(pa.acao === 'juntar') return `Junta em <b>${esc(pa.alvo.sku)}</b> (já existe)` + custo;
+      if(pa.acao === 'agrupa') return `Mesmo produto novo <b>${esc(pa.alvo.sku)}</b>`;
+      return `Produto novo <b>${esc(pa.alvo.sku)}</b>`;
     };
-    const aplicaAnuncio = (lst, c)=>{
-      lst.mode = c.mode; lst.price = c.price; lst.marginTarget = c.marginTarget;
-      lst.coupon = c.coupon; lst.freightNet = c.freightNet; lst.mktFixedFee = c.mktFixedFee;
+    const linhas = passos.map(pa=>{
+      const c = pa.c, p = profileOf(c.marketplaceId), r = calcSku(p, c);
+      return `<tr>
+        <td class="cell-sku">${esc(c.sku)}</td>
+        <td class="cell-name">${esc(c.name)}</td>
+        <td><span class="mkt-dot" style="background:${esc(p.color)}"></span>${esc(p.label)}</td>
+        <td>${destino(pa)}</td>
+        <td class="num">${r.error ? '--' : brl(r.price)}</td>
+        <td class="num ${!r.error && r.marginPct>=0?'pos':'neg'}">${r.error ? 'inviável' : pct(r.marginPct)}</td>
+      </tr>`;
+    }).join('');
+    const produtosNovos = n('novo');
+    box.innerHTML = `
+      ${wizardNavHtml(3)}
+      <div class="imp-resumo">
+        <div><b>${produtosNovos}</b> produto(s) novo(s)${n('agrupa') ? `, com ${produtosNovos + n('agrupa')} anúncios agrupados` : ''}</div>
+        <div><b>${n('juntar')}</b> anúncio(s) entram em produtos que já existem</div>
+        <div><b>${n('atualizar') + n('repetida')}</b> atualização(ões)${n('pular') ? `, <b>${n('pular')}</b> pulada(s)` : ''}</div>
+        ${ignoradas ? `<div class="neg">${ignoradas} linha(s) ignoradas: o marketplace da linha não bate com nenhum cadastrado</div>` : ''}
+      </div>
+      ${nMudaCusto ? `<p class="warnline" style="color:var(--warn);margin:0 0 12px;">${nMudaCusto} produto(s) vão mudar de custo com esta planilha. O custo vale para o produto inteiro, então o preço ou a margem dos outros marketplaces deles também muda.</p>` : ''}
+      ${temExistente ? `
+      <div class="radio-row">
+        <label class="radio-opt"><input type="radio" name="dupstrategy" value="overwrite" ${strategy==='overwrite'?'checked':''}> Atualizar o que já existe com os dados da planilha</label>
+        <label class="radio-opt"><input type="radio" name="dupstrategy" value="skip" ${strategy==='skip'?'checked':''}> Manter o que já existe (só acrescentar o que é novo)</label>
+      </div>` : ''}
+      <div class="preview-scroll">
+        <table>
+          <thead><tr><th>SKU</th><th>Nome</th><th>Marketplace</th><th>Destino</th><th class="num">Preço</th><th class="num">Margem</th></tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="imp_confirm">Confirmar importação</button>
+        <button class="btn" id="imp_back2">Voltar</button>
+        <button class="btn" id="imp_cancel3">Cancelar</button>
+      </div>`;
+    box.querySelectorAll('input[name=dupstrategy]').forEach(rd=> rd.onchange = ()=>{ strategy = rd.value; desenhar(); });
+    document.getElementById('imp_cancel3').onclick = closeImportWizard;
+    document.getElementById('imp_back2').onclick = renderImportStep2;
+    document.getElementById('imp_confirm').onclick = (e)=>{
+      if(candidates.length === 0){ toast('Nenhuma linha válida para importar.', 'err'); return; }
+      e.target.disabled = true;   // um clique só: dois cliques criariam tudo em dobro
+      const cont = aplicarImportacao(planejarImportacao(candidates, strategy, importState.aprendidos), strategy);
+      if(!anuncioPorId(state.selectedSkuId)){
+        const primeiro = state.products.find(p=> p.listings.length);
+        state.selectedSkuId = primeiro ? primeiro.listings[0].id : null;
+      }
+      saveState();
+      closeImportWizard();
+      renderProdutos();
+      toast(`${cont.novosProdutos} produto(s) novo(s), ${cont.emExistentes} anúncio(s) juntados a produtos existentes, ${cont.atualizados} atualizado(s), ${cont.pulados} pulado(s).`, 'ok', 'Importação concluída');
+      if(cont.conflitosDeCusto) toast(`${cont.conflitosDeCusto} produto(s) vieram com custos diferentes em linhas diferentes da planilha. Valeu o da última linha para todos os marketplaces do produto.`, 'warn', 'Custos divergentes na planilha');
+      avisaSeHaRepetidos();
     };
-    candidates.forEach(c=>{
-      let achado = null;
-      for(const prod of state.products){
-        const lst = prod.listings.find(l=> l.sku === c.sku && l.marketplaceId === c.marketplaceId);
-        if(lst){ achado = {prod, lst}; break; }
-      }
-      if(achado){
-        if(strategy === 'skip'){ pulados++; return; }
-        aplicaProduto(achado.prod, c); aplicaAnuncio(achado.lst, c); atualizados++;
-        return;
-      }
-      const base = c.productSku || skuBase(c.sku, state.profiles);
-      const lst = normalizeListing({id: novoId(), marketplaceId: c.marketplaceId, sku: c.sku});
-      aplicaAnuncio(lst, c);
-      const pai = state.products.find(p=> p.sku === base && !p.listings.some(l=> l.marketplaceId === c.marketplaceId));
-      if(pai){
-        aplicaProduto(pai, c); pai.listings.push(lst); novosAnuncios++;
-      } else {
-        const prod = normalizeProduct({id: 'p_' + novoId(), sku: base, name: c.name, listings: [lst]});
-        aplicaProduto(prod, c);
-        state.products.push(prod); novosProdutos++;
-      }
-    });
-    let conflitosDeCusto = 0;
-    custosVistos.forEach(s=>{ if(s.size > 1) conflitosDeCusto++; });
-    if(!anuncioPorId(state.selectedSkuId)){
-      const primeiro = state.products.find(p=> p.listings.length);
-      state.selectedSkuId = primeiro ? primeiro.listings[0].id : null;
-    }
-    saveState();
-    closeImportWizard();
-    renderProdutos();
-    toast(`${novosProdutos} produto(s) novo(s), ${novosAnuncios} anúncio(s) novo(s) em produtos existentes, ${atualizados} atualizado(s), ${pulados} pulado(s).`, 'ok', 'Importação concluída');
-    if(conflitosDeCusto) toast(`${conflitosDeCusto} produto(s) vieram com custos diferentes em linhas diferentes da planilha. Valeu o da última linha para todos os marketplaces do produto.`, 'warn', 'Custos divergentes na planilha');
-  };
+  }
+  desenhar();
 }
 
 function renderProdutos(){
@@ -2859,7 +2957,7 @@ function renderMarketplaces(){
         <span style="flex:1;"></span>
         <span style="font-size:10.5px;color:var(--ink-mute);">${used} produto(s)</span>
       </div>
-      <div class="field textrow"><label>Nome do marketplace<span class="hint">ID <code>${esc(p.id)}</code> &middot; no fim do SKU: ${sufixosDe(p).map(s=> '<code>-' + esc(s) + '</code>').join(' ou ')}${sufixosDe(p).length > 1 ? ' (o primeiro é o usado em SKU novo)' : ''}.</span></label><input type="text" data-mf="label" value="${esc(p.label)}" style="width:100%;text-align:left;"></div>
+      <div class="field textrow"><label>Nome do marketplace<span class="hint">ID <code>${esc(p.id)}</code> &middot; no fim do SKU: ${sufixosDoMarketplace(p.id).map(s=> '<code>-' + esc(s) + '</code>').join(' ou ')}${sufixosDoMarketplace(p.id).length > 1 ? ' (o primeiro é o usado em SKU novo)' : ''}${(aprendidosAtuais().mapa.get(p.id)||[]).length ? ' &middot; aprendido dos seus SKUs: ' + aprendidosAtuais().mapa.get(p.id).map(s=> '<code>-' + esc(s) + '</code>').join(', ') : ''}.</span></label><input type="text" data-mf="label" value="${esc(p.label)}" style="width:100%;text-align:left;"></div>
       <div class="field"><label>Cor de identificação</label><input type="text" data-mf="color" value="${esc(p.color)}" style="width:110px;text-align:left;"></div>
       <div class="field"><label>Nível de confiança do dado</label>
         <select data-mf="confidence">
@@ -3255,12 +3353,191 @@ function renderStorageNote(){
     : 'Os dados ficam salvos apenas no armazenamento local deste navegador, neste arquivo. Vá na aba "Sincronização (Google Sheets)" para ligar a um banco de dados que não some ao limpar o navegador ou trocar de computador.';
 }
 
+// ---------- unificação de produtos repetidos ----------
+// Antes, produtos com o mesmo SKU base mas custo diferente (um centavo que fosse) eram deixados
+// de fora sem aviso. Agora a análise separa três situações e mostra todas:
+//   juntar com custo igual     -> marcado para juntar, nenhum número muda
+//   juntar com custo diferente -> desmarcado; o usuário escolhe qual custo fica
+//   não dá para juntar         -> os dois já têm anúncio no mesmo marketplace (motivo explícito)
+function chaveDeCusto(pr){
+  return pr.costOverride ? ['1', pr.cogs, pr.fixedCost, pr.misc, pr.taxPct, pr.marketingPct].join('|') : '0|' + pr.cogs;
+}
+function descreveCusto(pr){
+  return brl(pr.cogs) + (pr.costOverride ? ' + custos destravados' : '');
+}
+
+function analiseDeUnificacao(){
+  const ap = aprendidosAtuais();
+  const base = s => skuBase(s, state.profiles, ap.tokens);
+  const conhecidos = new Set(sufixosConhecidos(state.profiles, ap.tokens));
+  const grupos = new Map();
+  state.products.forEach(p=>{
+    const b = base(p.sku), k = b.toLowerCase();
+    if(!grupos.has(k)) grupos.set(k, {base: b, produtos: []});
+    grupos.get(k).produtos.push(p);
+  });
+  const juntar = [], bloqueados = [], skusDeProduto = [];
+  grupos.forEach(g=>{
+    if(g.produtos.length === 1){
+      if(g.produtos[0].sku !== g.base) skusDeProduto.push({prod: g.produtos[0], base: g.base});
+      return;
+    }
+    // o produto com mais anúncios vira o destino; os outros entram se não repetirem marketplace
+    const ordem = g.produtos.slice().sort((a,b)=> b.listings.length - a.listings.length);
+    const destinos = [];
+    ordem.forEach(p=>{
+      const d = destinos.find(x=> !p.listings.some(l=> x.mids.has(l.marketplaceId)));
+      if(d){ d.produtos.push(p); p.listings.forEach(l=> d.mids.add(l.marketplaceId)); }
+      else destinos.push({produtos: [p], mids: new Set(p.listings.map(l=> l.marketplaceId))});
+    });
+    destinos.forEach(d=>{
+      if(d.produtos.length > 1) juntar.push({base: g.base, produtos: d.produtos,
+        custoIgual: new Set(d.produtos.map(chaveDeCusto)).size === 1});
+    });
+    destinos.slice(1).forEach(d=> d.produtos.forEach(p=>{
+      const repetidos = p.listings.map(l=> l.marketplaceId).filter(m=> destinos[0].mids.has(m));
+      bloqueados.push({base: g.base, prod: p, com: destinos[0].produtos[0], repetidos});
+    }));
+  });
+  // SKU de anúncio montado só com base + sufixos de marketplace, mas diferente do padrão do canal
+  // (ex.: "-magalummlolo" feito a partir do nome, ou "-meli-mercadolivre" com sufixo em dobro)
+  const canal = [];
+  const usados = new Set();
+  state.products.forEach(p=> p.listings.forEach(l=> usados.add(l.marketplaceId + '::' + l.sku.toLowerCase())));
+  state.products.forEach(p=>{
+    const b = base(p.sku);
+    p.listings.forEach(l=>{
+      if(!state.profiles.some(x=> x.id === l.marketplaceId)) return;
+      const certo = b + '-' + sufixoParaGerar(l.marketplaceId);
+      if(l.sku === certo || l.sku.toLowerCase().indexOf(b.toLowerCase()) !== 0) return;
+      if(usados.has(l.marketplaceId + '::' + certo.toLowerCase())) return;   // não cria SKU repetido no canal
+      const resto = l.sku.slice(b.length).split('-').filter(Boolean).map(slugDoRotulo);
+      if(resto.length && resto.every(t=> conhecidos.has(t))) canal.push({lst: l, prod: p, de: l.sku, para: certo});
+    });
+  });
+  juntar.sort((a,b)=> (b.custoIgual - a.custoIgual) || a.base.localeCompare(b.base));
+  return {juntar, bloqueados, canal, skusDeProduto};
+}
+
+function aplicarRevisao(an, escolhas){
+  const removidos = new Set();
+  let anunciosComCustoNovo = 0;
+  an.juntar.forEach((g, i)=>{
+    if(!escolhas.juntar.has(i)) return;
+    const destino = g.produtos[0];
+    const fonte = g.produtos.find(p=> p.id === escolhas.custo.get(i)) || destino;
+    g.produtos.forEach(p=>{ if(chaveDeCusto(p) !== chaveDeCusto(fonte)) anunciosComCustoNovo += p.listings.length; });
+    ['cogs','costOverride','fixedCost','misc','taxPct','marketingPct'].forEach(k=> destino[k] = fonte[k]);
+    destino.sku = g.base;
+    g.produtos.slice(1).forEach(p=>{ destino.listings.push(...p.listings); removidos.add(p.id); });
+  });
+  let canais = 0, produtos = 0;
+  an.canal.forEach((x, i)=>{ if(escolhas.canal.has(i)){ x.lst.sku = x.para; canais++; } });
+  an.skusDeProduto.forEach((x, i)=>{ if(escolhas.skuProd.has(i) && !removidos.has(x.prod.id)){ x.prod.sku = x.base; produtos++; } });
+  state.products = state.products.filter(p=> !removidos.has(p.id));
+  return {juntados: removidos.size, anunciosComCustoNovo, canais, produtos};
+}
+
+function closeUnifyWizard(){
+  const box = document.getElementById('unifyWizard');
+  box.style.display = 'none';
+  box.innerHTML = '';
+  if(!wizardVisivel()) fecharPainel();
+}
+
+function unificarProdutosRepetidos(){
+  closeSkuForm(); closeImportWizard(); closeExportWizard();
+  const an = analiseDeUnificacao();
+  const box = document.getElementById('unifyWizard');
+  box.style.display = 'block';
+  abrirPainel('Unificar produtos', 'Produtos com o mesmo SKU base. Confira e marque o que juntar; nada muda até você aplicar.');
+  const nada = !an.juntar.length && !an.canal.length && !an.skusDeProduto.length && !an.bloqueados.length;
+  if(nada){
+    box.innerHTML = `<p class="sub">Nenhum produto repetido: cada SKU base já está num produto só, e todos os SKUs de anúncio seguem o padrão do marketplace.</p>
+      <div class="form-actions"><button class="btn" id="uni_fechar">Fechar</button></div>`;
+    document.getElementById('uni_fechar').onclick = closeUnifyWizard;
+    return;
+  }
+  const chips = p=> p.listings.map(l=>{ const pr = profileOf(l.marketplaceId);
+    return `<span class="uni-chip"><span class="mkt-dot" style="background:${esc(pr.color)}"></span>${esc(pr.label)}</span>`; }).join('');
+  const grupoHtml = (g, i)=>`<div class="uni-grupo${g.custoIgual?'':' uni-atencao'}">
+      <label class="uni-head"><input type="checkbox" data-jun="${i}" ${g.custoIgual?'checked':''}>
+        <span><b class="mono">${esc(g.base)}</b> &mdash; ${g.produtos.length} produtos viram 1</span>
+        ${g.custoIgual ? '' : '<span class="tag">custo diferente</span>'}</label>
+      ${g.produtos.map((p, j)=>`<div class="uni-prod">
+          ${g.custoIgual ? '' : `<input type="radio" name="uni-custo-${i}" value="${esc(p.id)}" ${j===0?'checked':''} title="Usar o custo deste produto">`}
+          <span class="mono">${esc(p.sku)}</span><span class="uni-chips">${chips(p)}</span><span class="uni-custo">${descreveCusto(p)}</span>
+        </div>`).join('')}
+      ${g.custoIgual ? '' : `<p class="hint" style="margin:6px 0 0;">Os custos são diferentes. Marque o custo que fica: os anúncios dos outros produtos passam a usá-lo, e o preço ou a margem deles muda.</p>`}
+    </div>`;
+  const iguais = an.juntar.map((g,i)=> g.custoIgual ? grupoHtml(g,i) : '').join('');
+  const diferentes = an.juntar.map((g,i)=> g.custoIgual ? '' : grupoHtml(g,i)).join('');
+  box.innerHTML = `
+    ${iguais ? `<div class="section-label">Prontos para juntar (mesmo custo, nenhum número muda)</div>${iguais}` : ''}
+    ${diferentes ? `<div class="section-label">Mesmo SKU, custo diferente &mdash; escolha qual custo fica</div>${diferentes}` : ''}
+    ${an.canal.length ? `<div class="section-label">SKUs de anúncio fora do padrão do marketplace</div>
+      ${an.canal.map((x,i)=>`<label class="uni-linha"><input type="checkbox" data-canal="${i}" checked>
+        <span class="mono">${esc(x.de)}</span> &rarr; <span class="mono">${esc(x.para)}</span>
+        <span class="muted">${esc(profileOf(x.lst.marketplaceId).label)}</span></label>`).join('')}` : ''}
+    ${an.skusDeProduto.length ? `<div class="section-label">SKU do produto com sufixo de marketplace</div>
+      ${an.skusDeProduto.map((x,i)=>`<label class="uni-linha"><input type="checkbox" data-skuprod="${i}" checked>
+        <span class="mono">${esc(x.prod.sku)}</span> &rarr; <span class="mono">${esc(x.base)}</span></label>`).join('')}` : ''}
+    ${an.bloqueados.length ? `<div class="section-label">Não dá para juntar</div>
+      ${an.bloqueados.map(x=>`<div class="uni-linha muted"><span class="mono">${esc(x.prod.sku)}</span>
+        e <span class="mono">${esc(x.com.sku)}</span> já têm anúncio em ${x.repetidos.map(m=> esc(profileOf(m).label)).join(', ')}.
+        Se forem o mesmo item, exclua o anúncio repetido e rode de novo.</div>`).join('')}` : ''}
+    <div class="form-actions">
+      <button class="btn primary" id="uni_aplicar">Aplicar</button>
+      <button class="btn" id="uni_cancelar">Cancelar</button>
+      <span class="muted" id="uni_resumo" style="font-size:12px;"></span>
+    </div>`;
+  const resumo = ()=>{
+    const j = [...box.querySelectorAll('[data-jun]:checked')].reduce((a,el)=> a + an.juntar[+el.dataset.jun].produtos.length - 1, 0);
+    const c = box.querySelectorAll('[data-canal]:checked').length + box.querySelectorAll('[data-skuprod]:checked').length;
+    document.getElementById('uni_resumo').textContent = `${j} produto(s) serão juntados, ${c} SKU(s) corrigidos.`;
+  };
+  box.querySelectorAll('input').forEach(el=> el.addEventListener('change', resumo));
+  resumo();
+  document.getElementById('uni_cancelar').onclick = closeUnifyWizard;
+  document.getElementById('uni_aplicar').onclick = (e)=>{
+    const escolhas = {
+      juntar: new Set([...box.querySelectorAll('[data-jun]:checked')].map(el=> +el.dataset.jun)),
+      custo: new Map(an.juntar.map((g,i)=> [i, (box.querySelector(`input[name="uni-custo-${i}"]:checked`)||{}).value])),
+      canal: new Set([...box.querySelectorAll('[data-canal]:checked')].map(el=> +el.dataset.canal)),
+      skuProd: new Set([...box.querySelectorAll('[data-skuprod]:checked')].map(el=> +el.dataset.skuprod))
+    };
+    if(!escolhas.juntar.size && !escolhas.canal.size && !escolhas.skuProd.size){ toast('Nada marcado para aplicar.', 'warn'); return; }
+    e.target.disabled = true;
+    const res = aplicarRevisao(an, escolhas);
+    if(!anuncioPorId(state.selectedSkuId)){
+      const primeiro = state.products.find(p=> p.listings.length);
+      state.selectedSkuId = primeiro ? primeiro.listings[0].id : null;
+    }
+    saveState();
+    closeUnifyWizard();
+    renderProdutos();
+    toast(`${res.juntados} produto(s) juntados, ${res.canais + res.produtos} SKU(s) corrigidos.`
+      + (res.anunciosComCustoNovo ? ` ${res.anunciosComCustoNovo} anúncio(s) passaram a usar o custo escolhido.` : ' Nenhum preço mudou.'), 'ok', 'Catálogo unificado');
+  };
+}
+
+// Depois de importar (e uma vez ao abrir), avisa se há produtos com o mesmo SKU base separados.
+let avisouRepetidosNaSessao = false;
+function avisaSeHaRepetidos(){
+  const an = analiseDeUnificacao();
+  const n = an.juntar.reduce((a,g)=> a + g.produtos.length - 1, 0);
+  if(!n) return;
+  avisouRepetidosNaSessao = true;
+  toast(`${n} produto(s) têm o mesmo SKU base de outro e estão separados. Veja em Planilhas e catálogo → Unificar produtos repetidos.`, 'warn', 'Possíveis repetidos');
+}
+
 // ---------- init ----------
 renderTopDisclaimer();
 renderStorageNote();
 renderSyncPill();
 irPara('produtos');
 avisaMigracao();
+setTimeout(()=>{ if(!avisouRepetidosNaSessao) avisaSeHaRepetidos(); }, 1200);
 if(gasUrl) pullFromSheets(false);
 // Uma aba aberta há horas não sabe o que outro dispositivo salvou. Ao voltar para ela, relê a
 // planilha -- desde que não haja alteração local esperando envio, que seria descartada.
