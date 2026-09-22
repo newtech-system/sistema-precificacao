@@ -734,12 +734,36 @@ function novoId(){ return 'id' + Date.now().toString(36) + Math.random().toStrin
 function slugDoRotulo(label){
   return String(label||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');
 }
-// SKU sem o sufixo do marketplace: "07-01-46-shopee" -> "07-01-46"
+// Um marketplace é reconhecido no fim do SKU pelo ID (ex.: "meli", "magalulolo") e também pelo
+// nome ("mercadolivre"). O ID tem prioridade ao montar SKU novo: é o que o vendedor usa nos SKUs
+// de verdade, e dois marketplaces podem ter nomes parecidos (dois Magalu) mas nunca o mesmo ID.
+// ID gerado pelo próprio sistema (marketplace criado no botão) não serve de sufixo: é ilegível.
+function idGeradoPeloSistema(id){ return /^id[a-z0-9]{10,}$/.test(String(id||'')); }
+function sufixoPreferido(pr){
+  if(!pr) return '';
+  const doId = slugDoRotulo(pr.id);
+  if(doId && !idGeradoPeloSistema(pr.id) && pr.id !== 'custom' && pr.id !== '__missing__') return doId;
+  return slugDoRotulo(pr.label);
+}
+function sufixosDe(pr){
+  const lista = [];
+  [sufixoPreferido(pr), idGeradoPeloSistema(pr.id) ? '' : slugDoRotulo(pr.id), slugDoRotulo(pr.label)]
+    .forEach(s=>{ if(s && lista.indexOf(s) === -1) lista.push(s); });
+  return lista;
+}
+// Todos os sufixos dos marketplaces cadastrados, do mais longo para o mais curto -- assim
+// "-magalulolo" é reconhecido inteiro antes de "-magalu" ser sequer testado.
+function sufixosConhecidos(profiles){
+  const lista = [];
+  (profiles||[]).forEach(pr=> sufixosDe(pr).forEach(s=>{ if(lista.indexOf(s) === -1) lista.push(s); }));
+  return lista.sort((a,b)=> b.length - a.length);
+}
+// SKU sem o sufixo do marketplace: "07-01-46-shopee" -> "07-01-46", "07-01-46-meli" -> "07-01-46"
 function skuBase(sku, profiles){
   const s = String(sku||'').trim();
-  for(const pr of (profiles||[])){
-    const suf = '-' + slugDoRotulo(pr.label);
-    if(suf.length > 1 && s.endsWith(suf)) return s.slice(0, -suf.length);
+  const baixo = s.toLowerCase();
+  for(const suf of sufixosConhecidos(profiles)){
+    if(baixo.length > suf.length + 1 && baixo.endsWith('-' + suf)) return s.slice(0, -(suf.length + 1));
   }
   return s;
 }
@@ -787,6 +811,74 @@ function anuncioPorId(id){
   return null;
 }
 function produtoPorId(id){ return state.products.find(p=> p.id === id) || null; }
+
+// Junta produtos que são o mesmo item e ficaram separados -- por exemplo porque o sufixo "-meli"
+// não era reconhecido. Só junta com o mesmo SKU base, os mesmos custos e marketplaces que não se
+// repetem; nunca separa nada e não muda nenhum número. Também corrige SKUs de canal que o sistema
+// montou com o nome do marketplace em vez do ID.
+function planoDeUnificacao(){
+  const chaveDeCusto = pr => pr.costOverride ? [pr.cogs, pr.fixedCost, pr.misc, pr.taxPct, pr.marketingPct].join('|') : String(pr.cogs);
+  const grupos = new Map();
+  state.products.forEach(prod=>{
+    const base = skuBase(prod.sku, state.profiles);
+    const chave = base.toLowerCase() + '#' + prod.costOverride + '#' + chaveDeCusto(prod);
+    if(!grupos.has(chave)) grupos.set(chave, {base, produtos: []});
+    grupos.get(chave).produtos.push(prod);
+  });
+  const juncoes = [], skusDeProduto = [], skusDeCanal = [];
+  grupos.forEach(g=>{
+    const destinos = [];
+    g.produtos.forEach(prod=>{
+      const d = destinos.find(x=> !prod.listings.some(l=> x.mids.has(l.marketplaceId)));
+      if(d){ d.absorve.push(prod); prod.listings.forEach(l=> d.mids.add(l.marketplaceId)); }
+      else destinos.push({prod, absorve: [], mids: new Set(prod.listings.map(l=> l.marketplaceId))});
+    });
+    destinos.forEach(d=>{
+      if(d.absorve.length) juncoes.push({destino: d.prod, absorve: d.absorve, base: g.base});
+      else if(d.prod.sku !== g.base) skusDeProduto.push({prod: d.prod, base: g.base});
+    });
+  });
+  // SKU de canal montado com o nome ("-magalumm..." a partir do rótulo) quando o ID é outro
+  state.products.forEach(prod=>{
+    const base = skuBase(prod.sku, state.profiles);
+    prod.listings.forEach(l=>{
+      const pr = state.profiles.find(x=> x.id === l.marketplaceId);
+      if(!pr) return;
+      const pelaEtiqueta = base + '-' + slugDoRotulo(pr.label), certo = base + '-' + sufixoPreferido(pr);
+      if(pelaEtiqueta !== certo && l.sku === pelaEtiqueta) skusDeCanal.push({lst: l, de: l.sku, para: certo});
+    });
+  });
+  return {juncoes, skusDeProduto, skusDeCanal};
+}
+function aplicarUnificacao(plano){
+  plano.skusDeCanal.forEach(x=>{ x.lst.sku = x.para; });
+  plano.skusDeProduto.forEach(x=>{ x.prod.sku = x.base; });
+  const removidos = new Set();
+  plano.juncoes.forEach(j=>{
+    j.destino.sku = j.base;
+    j.absorve.forEach(outro=>{ j.destino.listings.push(...outro.listings); removidos.add(outro.id); });
+  });
+  state.products = state.products.filter(pr=> !removidos.has(pr.id));
+  return removidos.size;
+}
+function unificarProdutosRepetidos(){
+  const plano = planoDeUnificacao();
+  const nJuncoes = plano.juncoes.reduce((a,j)=> a + j.absorve.length, 0);
+  if(!nJuncoes && !plano.skusDeProduto.length && !plano.skusDeCanal.length){
+    toast('Nenhum produto repetido: cada SKU base já está num produto só.', 'ok', 'Nada para unificar');
+    return;
+  }
+  const exemplos = plano.juncoes.slice(0, 5).map(j=> '  ' + j.base + ': ' + [j.destino].concat(j.absorve).map(x=> x.sku).join(' + ')).join('\n');
+  const msg = (nJuncoes ? nJuncoes + ' produto(s) vão ser juntados a outro com o mesmo SKU base e o mesmo custo:\n' + exemplos + (plano.juncoes.length > 5 ? '\n  ...' : '') + '\n\n' : '')
+    + (plano.skusDeCanal.length ? plano.skusDeCanal.length + ' SKU(s) de anúncio vão trocar o sufixo do nome do marketplace pelo ID (ex.: ' + plano.skusDeCanal[0].de + ' -> ' + plano.skusDeCanal[0].para + ').\n\n' : '')
+    + (plano.skusDeProduto.length ? plano.skusDeProduto.length + ' produto(s) vão ter o SKU base corrigido (sem o sufixo do marketplace).\n\n' : '')
+    + 'Preços, custos e margens não mudam. Continuar?';
+  if(!confirm(msg)) return;
+  const removidos = aplicarUnificacao(plano);
+  saveState();
+  renderProdutos();
+  toast((removidos ? removidos + ' produto(s) unificados. ' : '') + (plano.skusDeCanal.length ? plano.skusDeCanal.length + ' SKU(s) de anúncio corrigidos. ' : '') + 'Nenhum preço mudou.', 'ok', 'Catálogo unificado');
+}
 
 // Linhas planas (formato antigo, backup antigo ou planilha do Google) -> produtos com anúncios.
 // Só junta o que é o mesmo produto de verdade: mesmo productId ou, sem ele, mesmo SKU base E os
@@ -1136,20 +1228,19 @@ const MISSING_PROFILE = {id:'__missing__', label:'Marketplace removido', color:'
   commission:0, service:0, transaction:0, fixedFee:0, dualAdPrice:false, variableFreight:false, variableFixedFee:false, missing:true};
 const profileOf = id => state.profiles.find(p=>p.id===id) || MISSING_PROFILE;
 const uid = () => 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const mktSlug = id => profileOf(id).label.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+const mktSlug = id => sufixoPreferido(profileOf(id));
 
 // Aplica o sufixo do marketplace ao SKU. \u00c9 idempotente (n\u00e3o gera "-shopee-shopee" ao
 // reimportar uma planilha j\u00e1 exportada) e troca o sufixo quando o SKU vem carimbado com
 // o nome de OUTRO marketplace cadastrado -- caso do ciclo de edi\u00e7\u00e3o em massa.
 function applyMktSuffix(skuRaw, marketplaceId){
-  let base = String(skuRaw||'').trim();
-  const alvo = '-' + mktSlug(marketplaceId);
-  if(base.endsWith(alvo)) return base;
-  state.profiles.forEach(p=>{
-    const outro = '-' + mktSlug(p.id);
-    if(outro !== alvo && outro.length > 1 && base.endsWith(outro)) base = base.slice(0, -outro.length);
-  });
-  return base + alvo;
+  const s = String(skuRaw||'').trim();
+  const pr = profileOf(marketplaceId);
+  // já termina com um sufixo deste marketplace (pelo ID ou pelo nome): fica como está
+  const baixo = s.toLowerCase();
+  if(sufixosDe(pr).some(x=> baixo.endsWith('-' + x))) return s;
+  // termina com o de outro marketplace: troca pelo deste
+  return skuBase(s, state.profiles) + '-' + sufixoPreferido(pr);
 }
 
 function roundToBreakpoint(v){
@@ -1366,11 +1457,12 @@ function topbarHtml(view){
         <option value="profit_desc">Lucro: maior primeiro</option>
       </select>
       <select id="sheetActions">
-        <option value="">Planilhas...</option>
+        <option value="">Planilhas e catálogo...</option>
         <option value="template">Baixar modelo</option>
         <option value="import">Importar planilha</option>
         <option value="export">Exportar calculada</option>
         <option value="exportEdit">Exportar p/ edição em massa</option>
+        <option value="unificar">Unificar produtos repetidos</option>
       </select>
       <button class="btn primary" id="newSkuBtn"><svg class="ic"><use href="#i-plus"/></svg>Novo produto</button>`;
   }
@@ -1403,6 +1495,7 @@ function ligarControlesDaTopbar(view){
       else if(acao === 'import') abrirImportacao();
       else if(acao === 'export') abrirExportCalculada();
       else if(acao === 'exportEdit') abrirExportEdicao();
+      else if(acao === 'unificar') unificarProdutosRepetidos();
     });
     document.getElementById('newSkuBtn').onclick = ()=>{ fecharTudoDoPainel(); openSkuForm(null); };
   }
@@ -2351,7 +2444,10 @@ function matchMarketplaceByName(texto){
   if(!alvo) return null;
   const exato = state.profiles.find(p => normalizeHeader(p.label) === alvo);
   if(exato) return exato.id;
-  const porSlug = state.profiles.find(p => mktSlug(p.id) === alvo);
+  // a coluna Marketplace da planilha também pode trazer o ID ("meli", "magalulolo")
+  const porId = state.profiles.find(p => normalizeHeader(p.id) === alvo || slugDoRotulo(p.id) === alvo);
+  if(porId) return porId.id;
+  const porSlug = state.profiles.find(p => slugDoRotulo(p.label) === alvo);
   return porSlug ? porSlug.id : null;
 }
 function rowMarketplaceStats(){
@@ -2763,7 +2859,7 @@ function renderMarketplaces(){
         <span style="flex:1;"></span>
         <span style="font-size:10.5px;color:var(--ink-mute);">${used} produto(s)</span>
       </div>
-      <div class="field textrow"><label>Nome do marketplace<span class="hint">Serve de sufixo no SKU de produtos novos (ex.: "-shopee"). SKUs já criados não mudam.</span></label><input type="text" data-mf="label" value="${esc(p.label)}" style="width:100%;text-align:left;"></div>
+      <div class="field textrow"><label>Nome do marketplace<span class="hint">ID <code>${esc(p.id)}</code> &middot; no fim do SKU: ${sufixosDe(p).map(s=> '<code>-' + esc(s) + '</code>').join(' ou ')}${sufixosDe(p).length > 1 ? ' (o primeiro é o usado em SKU novo)' : ''}.</span></label><input type="text" data-mf="label" value="${esc(p.label)}" style="width:100%;text-align:left;"></div>
       <div class="field"><label>Cor de identificação</label><input type="text" data-mf="color" value="${esc(p.color)}" style="width:110px;text-align:left;"></div>
       <div class="field"><label>Nível de confiança do dado</label>
         <select data-mf="confidence">
