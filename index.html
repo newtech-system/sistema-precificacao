@@ -3487,9 +3487,10 @@ async function mlAtualizarStatus(mostrarErro){
 async function mlGuardarApp(){
   const id = document.getElementById('mlClientId').value.trim();
   const secret = document.getElementById('mlClientSecret').value.trim();
-  if(!id || !secret){ toast('Preencha o Client ID e o Client Secret.', 'err'); return; }
+  const redirect = document.getElementById('mlRedirect').value.trim();
+  if(!id){ toast('Preencha o Client ID.', 'err'); return; }
   try{
-    await mlPost({action:'mlApp', clientId: id, clientSecret: secret});
+    await mlPost({action:'mlApp', clientId: id, clientSecret: secret, redirect});
     document.getElementById('mlClientSecret').value = '';
     toast('Guardados na planilha. Agora clique em "Conectar ao Mercado Livre".', 'ok', 'Aplicação salva');
     await mlAtualizarStatus();
@@ -3709,8 +3710,11 @@ function renderML(){
     ? `<p class="sub">Não consegui falar com o Apps Script. Se a planilha está conectada, o código dele pode estar na versão antiga: copie o código novo na aba Sincronização e publique uma nova versão.</p>
        <div class="form-actions"><button class="btn" id="mlRecarregarStatus">Tentar de novo</button></div>`
     : `
-      <div class="field textrow"><label>URL de retorno para cadastrar na sua aplicação do Mercado Livre<span class="hint">Cole exatamente isto em "URI de redirect" no painel de desenvolvedor do ML.</span></label>
-        <input type="text" id="mlRedirect" readonly value="${esc(st.redirect || '')}" style="width:100%;text-align:left;"></div>
+      <div class="field textrow"><label>URL de retorno &mdash; tem que ser <b>igual</b> à cadastrada na aplicação do ML<span class="hint">Copie daqui e cole em "URLs de redirecionamento" no painel do Mercado Livre. Vem preenchida sozinha pelo Apps Script; só mude se a sua planilha tiver mais de uma implantação publicada e a certa for outra.</span></label>
+        <input type="text" id="mlRedirect" value="${esc(st.redirect || '')}" style="width:100%;text-align:left;"></div>
+      ${st.redirectManual ? `<p class="sub" style="margin:-4px 0 10px;">Escrita à mão. A que o Apps Script informa é <code>${esc(st.redirectPadrao || '(nenhuma)')}</code>.</p>` : ''}
+      ${st.urlAuth ? `<div class="field textrow"><label>Endereço que o botão Conectar abre<span class="hint">Serve para conferir: o <code>redirect_uri</code> daqui precisa ser idêntico ao cadastrado no ML.</span></label>
+        <input type="text" id="mlUrlAuth" readonly value="${esc(st.urlAuth)}" style="width:100%;text-align:left;font-size:11px;"></div>` : ''}
       <div class="grid2">
         <div class="field"><label>Client ID (App ID)</label><input type="text" id="mlClientId" style="width:220px;text-align:left;" value="${esc(st.clientId || '')}"></div>
         <div class="field"><label>Client Secret<span class="hint">Fica guardado só na planilha; nunca volta para esta tela.</span></label><input type="password" id="mlClientSecret" style="width:220px;text-align:left;" placeholder="${st.temApp ? '•••••••• (já guardado)' : ''}"></div>
@@ -3830,8 +3834,8 @@ function ligarML(){
   liga('mlBuscar', mlCarregarItens);
   liga('mlVincularSugeridos', mlVincularSugeridos);
   liga('mlTaxas', mlAtualizarTaxas);
-  const redirect = q('mlRedirect');
-  if(redirect) redirect.onclick = ()=> redirect.select();
+  const urlAuth = q('mlUrlAuth');
+  if(urlAuth) urlAuth.onclick = ()=> urlAuth.select();
   const perfilSel = q('mlPerfil');
   if(perfilSel) perfilSel.onchange = ()=>{
     state.profiles.forEach(p=> p.ehMercadoLivre = (p.id === perfilSel.value));
@@ -5131,6 +5135,11 @@ function mlResponderErro(err) {
 function mlRota(e) {
   var q = (e && e.parameter) || {};
   if (q.code) return mlPaginaDeRetorno(q.code, q.state);
+  // o Mercado Livre devolve o motivo quando recusa a autorização: mostra em vez de uma tela muda
+  if (q.error) return HtmlService.createHtmlOutput('<html><body style="font-family:system-ui,Arial,sans-serif;padding:40px;max-width:680px;">' +
+    '<h2 style="color:#b3261e;">Mercado Livre recusou a autorização</h2><p style="font-size:16px;line-height:1.5;">' +
+    'Motivo: <b>' + String(q.error).replace(/[<>]/g, '') + '</b><br>' + String(q.error_description || '').replace(/[<>]/g, '') +
+    '</p><p style="font-size:14px;color:#555;">Na maioria das vezes é a URL de retorno: ela precisa estar cadastrada na aplicação exatamente como o sistema mostra.</p></body></html>');
   var acao = q.ml;
   try {
     if (acao === 'status') return jsonResponse(mlStatus());
@@ -5147,19 +5156,26 @@ function mlRota(e) {
 
 function mlStatus() {
   var p = mlProps();
-  return {ok:true, temApp: !!p.getProperty('ml_client_id'), conectado: !!p.getProperty('ml_refresh'),
+  var id = p.getProperty('ml_client_id') || '';
+  return {ok:true, temApp: !!id, conectado: !!p.getProperty('ml_refresh'),
     apelido: p.getProperty('ml_apelido') || '', userId: p.getProperty('ml_user') || '',
-    redirect: mlRedirect(), clientId: p.getProperty('ml_client_id') || ''};
+    redirect: mlRedirect(), redirectPadrao: mlRedirectPadrao(), redirectManual: !!p.getProperty('ml_redirect'),
+    clientId: id, urlAuth: id ? mlUrlDeAutorizacao() : ''};
 }
 
+// A URL de retorno é a deste Apps Script. Em geral ele mesmo informa qual é; mas quando a planilha
+// tem mais de uma implantação publicada, a que ele informa pode não ser a que você usa. Por isso dá
+// para escrever a URL à mão, e ela tem que ser IGUAL à cadastrada na aplicação do Mercado Livre.
+function mlRedirectPadrao() {
+  try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
+}
 function mlRedirect() {
-  return ScriptApp.getService().getUrl();
+  return mlProps().getProperty('ml_redirect') || mlRedirectPadrao();
 }
 
-function mlUrlDeAutorizacao(origem) {
+function mlUrlDeAutorizacao() {
   var id = mlProps().getProperty('ml_client_id');
   if (!id) throw new Error('Guarde o Client ID e o Client Secret da sua aplicação antes de conectar.');
-  mlProps().setProperty('ml_origem', String(origem || ''));
   return 'https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=' + encodeURIComponent(id) +
     '&redirect_uri=' + encodeURIComponent(mlRedirect());
 }
@@ -5170,9 +5186,15 @@ function mlSalvarApp(body) {
     ['ml_client_id','ml_client_secret','ml_access','ml_refresh','ml_exp','ml_user','ml_apelido'].forEach(function (k) { p.deleteProperty(k); });
     return jsonResponse({ok:true, apagado:true});
   }
-  if (!body.clientId || !body.clientSecret) return jsonResponse({ok:false, error:'Informe o Client ID e o Client Secret.'});
+  if (body.redirect !== undefined) {
+    var r = String(body.redirect || '').trim();
+    if (r && r !== mlRedirectPadrao()) p.setProperty('ml_redirect', r); else p.deleteProperty('ml_redirect');
+  }
+  if (!body.clientId) return jsonResponse({ok:false, error:'Informe o Client ID.'});
   p.setProperty('ml_client_id', String(body.clientId).trim());
-  p.setProperty('ml_client_secret', String(body.clientSecret).trim());
+  // secret em branco mantém o que já está guardado (a tela nunca mostra o secret de volta)
+  if (body.clientSecret) p.setProperty('ml_client_secret', String(body.clientSecret).trim());
+  if (!p.getProperty('ml_client_secret')) return jsonResponse({ok:false, error:'Informe também o Client Secret na primeira vez.'});
   return jsonResponse({ok:true, redirect: mlRedirect()});
 }
 
