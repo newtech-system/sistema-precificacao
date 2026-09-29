@@ -517,6 +517,8 @@
   tr.lt-erro td:first-child{box-shadow:inset 3px 0 0 var(--bad);}
   .lt-x{vertical-align:middle !important;}
   .lt-status{font-size:12px;margin:10px 0 0;}
+  .ml-uso{display:block;font-size:11px;color:var(--ink-2);white-space:nowrap;}
+  .ml-uso input{accent-color:var(--brand);margin:0 4px 0 0;vertical-align:-1px;}
 
   /* ============ usuários, conflitos e histórico ============ */
   .userbtn{display:block;margin-top:9px;background:none;border:0;padding:0;font:inherit;font-size:11.5px;
@@ -848,9 +850,17 @@ function normalizaIdDigitado(texto){
 }
 
 function normalizeListing(l){
-  ['price','marginTarget','coupon','freightNet','mktFixedFee','mlPreco','mlPct','mlFixo'].forEach(k=> l[k] = Number(l[k])||0);
-  ['mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlAtualizadoEm'].forEach(k=> l[k] = String(l[k]===undefined||l[k]===null ? '' : l[k]));
+  ['price','marginTarget','coupon','freightNet','mktFixedFee','mlPreco','mlPct','mlFixo','mlFrete','mlFreteOutra'].forEach(k=> l[k] = Number(l[k])||0);
+  ['mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlAtualizadoEm','mlLogistica','mlFreteEm'].forEach(k=> l[k] = String(l[k]===undefined||l[k]===null ? '' : l[k]));
   l.mlUsar = toBool(l.mlUsar);
+  l.mlUsarFrete = toBool(l.mlUsarFrete);
+  l.mlFreteGratis = toBool(l.mlFreteGratis);
+  if(typeof l.mlFreteFaixas === 'string'){
+    const txtF = l.mlFreteFaixas.trim().replace(/^'/, '');
+    try{ l.mlFreteFaixas = JSON.parse(txtF || '[]'); }catch(e){ l.mlFreteFaixas = []; }
+  }
+  if(!Array.isArray(l.mlFreteFaixas)) l.mlFreteFaixas = [];
+  l.mlFreteFaixas = l.mlFreteFaixas.map(f=>({min: Number(f.min)||0, custo: Number(f.custo)||0})).sort((a,b)=> a.min - b.min);
   // as faixas de taxa do Mercado Livre viajam como JSON numa célula da planilha
   if(typeof l.mlFaixas === 'string'){
     const txt = l.mlFaixas.trim().replace(/^'/, '');
@@ -887,7 +897,8 @@ function visaoDoAnuncio(prod, lst){
     fixedCost: prod.fixedCost, misc: prod.misc, taxPct: prod.taxPct, marketingPct: prod.marketingPct,
     coupon: lst.coupon, freightNet: lst.freightNet, mktFixedFee: lst.mktFixedFee,
     mode: lst.mode, price: lst.price, marginTarget: lst.marginTarget,
-    mlUsar: lst.mlUsar, mlFaixas: lst.mlFaixas, mlItemId: lst.mlItemId, mlTipo: lst.mlTipo, mlAtualizadoEm: lst.mlAtualizadoEm
+    mlUsar: lst.mlUsar, mlFaixas: lst.mlFaixas, mlItemId: lst.mlItemId, mlTipo: lst.mlTipo, mlAtualizadoEm: lst.mlAtualizadoEm,
+    mlUsarFrete: lst.mlUsarFrete, mlFreteFaixas: lst.mlFreteFaixas, mlFreteGratis: lst.mlFreteGratis
   };
 }
 function listagens(){
@@ -943,7 +954,9 @@ function agruparEmProdutos(rows, profiles){
       alteradoPor: r.alteradoPor, alteradoEm: r.alteradoEm,
       mlItemId: r.mlItemId, mlVarId: r.mlVarId, mlTitulo: r.mlTitulo, mlTipo: r.mlTipo, mlSituacao: r.mlSituacao,
       mlCategoria: r.mlCategoria, mlPreco: r.mlPreco, mlPct: r.mlPct, mlFixo: r.mlFixo, mlFaixas: r.mlFaixas,
-      mlUsar: r.mlUsar, mlAtualizadoEm: r.mlAtualizadoEm
+      mlUsar: r.mlUsar, mlAtualizadoEm: r.mlAtualizadoEm,
+      mlFrete: r.mlFrete, mlFreteFaixas: r.mlFreteFaixas, mlFreteGratis: r.mlFreteGratis, mlFreteOutra: r.mlFreteOutra,
+      mlLogistica: r.mlLogistica, mlUsarFrete: r.mlUsarFrete, mlFreteEm: r.mlFreteEm
     }));
   });
   let separados = 0;
@@ -1037,7 +1050,8 @@ function avisaMigracao(){
 const CAMPOS_TEXTO_PLANILHA = {
   Marketplaces: ['id','uid','label','note','color','tiers','alteradoPor','alteradoEm'],
   Produtos: ['id','productId','productSku','sku','name','marketplaceId','alteradoPor','alteradoEm','prodAlteradoPor','prodAlteradoEm',
-    'mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlFaixas','mlAtualizadoEm'],
+    'mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlFaixas','mlAtualizadoEm',
+    'mlFreteFaixas','mlLogistica','mlFreteEm'],
   Padroes: []
 };
 
@@ -1065,7 +1079,7 @@ let scriptDesatualizado = false;
 const GAS_VERSAO_MINIMA = 4;
 // Versão desta página, mandada em cada gravação. O Apps Script 5 recusa páginas mais antigas: elas
 // ainda têm o envio sem fila, que gerava conflitos falsos e desfazia alterações.
-const CLIENTE_VERSAO = 6;
+const CLIENTE_VERSAO = 7;
 const MSG_SCRIPT_ANTIGO = 'O código do Apps Script na sua planilha está desatualizado: ele não guarda o agrupamento de produtos (produto pai com um anúncio por marketplace), e o descartaria sem avisar. Para não apagar dados, nada foi enviado. Abra a aba Sincronização, copie o código novo, cole no Apps Script e publique uma NOVA VERSÃO da implantação existente (Implantar → Gerenciar implantações → lápis → Nova versão).';
 const BASE_KEY = 'mkt_pricing_base_v1';
 const USUARIO_KEY = 'mkt_pricing_usuario';
@@ -1170,7 +1184,8 @@ const CAMPOS_ANUNCIO = ['marketplaceId','sku','mode','price','marginTarget','cou
 // Campos do vínculo com o Mercado Livre. Ficam fora de CAMPOS_ANUNCIO de propósito: o formulário e
 // o editor em lote gravam "só o que mudou neles", e se estes entrassem naquela lista um salvar
 // apagaria o vínculo. Aqui eles entram na sincronização, que precisa vê-los.
-const CAMPOS_ML = ['mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlPreco','mlPct','mlFixo','mlFaixas','mlUsar','mlAtualizadoEm'];
+const CAMPOS_ML = ['mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlPreco','mlPct','mlFixo','mlFaixas','mlUsar','mlAtualizadoEm',
+  'mlFrete','mlFreteFaixas','mlFreteGratis','mlFreteOutra','mlLogistica','mlUsarFrete','mlFreteEm'];
 
 // Os dados em quatro coleções de itens com chave: marketplaces (pela chave interna uid, que não
 // muda quando o ID é trocado), produtos, anúncios (com o produto a que pertencem em _prod -- assim
@@ -1379,6 +1394,8 @@ const ROTULOS_CAMPO = {
     mlItemId:'Anúncio no Mercado Livre', mlVarId:'Variação no ML', mlTitulo:'Título no ML', mlTipo:'Tipo de anúncio no ML',
     mlSituacao:'Situação no ML', mlCategoria:'Categoria no ML', mlPreco:'Preço no ML', mlPct:'Comissão do ML %',
     mlFixo:'Custo fixo do ML', mlFaixas:'Faixas de taxa do ML', mlUsar:'Usar as taxas do ML', mlAtualizadoEm:'Taxas do ML atualizadas em',
+    mlFrete:'Custo de envio do ML', mlFreteFaixas:'Faixas de envio do ML', mlFreteGratis:'Anúncio com frete grátis',
+    mlFreteOutra:'Envio na outra opção', mlLogistica:'Logística do ML', mlUsarFrete:'Usar o envio do ML', mlFreteEm:'Envio do ML atualizado em',
     marginTarget:'Margem alvo %', coupon:'Cupom', freightNet:'Frete líquido', mktFixedFee:'Taxa fixa do anúncio'},
   marketplace: {id:'ID', label:'Nome', color:'Cor', confidence:'Confiança', note:'Observação', commission:'Comissão %', ehMercadoLivre:'É o Mercado Livre',
     service:'Taxa de serviço %', transaction:'Taxa de transação %', fixedFee:'Taxa fixa', dualAdPrice:'Preço de anúncio duplo',
@@ -1985,7 +2002,7 @@ function feeSegments(profile, sku){
     ? profile.tiers.slice().sort((a,b)=> (Number(a.min)||0) - (Number(b.min)||0))
     : null);
 
-  const faixas = tiersDoPerfil
+  let faixas = tiersDoPerfil
     ? tiersDoPerfil.map((t,i)=>({
         min: i===0 ? 0 : (Number(t.min)||0),   // a primeira faixa sempre cobre de zero pra cima
         max: tiersDoPerfil[i+1] ? (Number(tiersDoPerfil[i+1].min)||0) : Infinity,
@@ -1993,15 +2010,33 @@ function feeSegments(profile, sku){
       }))
     : [{min:0, max:Infinity, rates: mk(profile.commission, profile.service, profile.transaction, effectiveFixedFee(profile, sku), 0)}];
 
+  // O envio do Mercado Livre muda por faixa de preço igual às taxas, então as viradas de faixa dos
+  // dois entram na mesma conta: cada trecho carrega o custo de envio que vale nele.
+  const frete = freteDoAnuncio(sku);
+  if(frete){
+    const cortes = [];
+    faixas.forEach(f=> cortes.push(f.min));
+    frete.forEach(f=> cortes.push(f.min));
+    const unicos = [...new Set(cortes)].sort((a,b)=> a - b);
+    const novas = [];
+    unicos.forEach((min, i)=>{
+      const max = unicos[i+1] === undefined ? Infinity : unicos[i+1];
+      const dona = faixas.filter(f=> f.min <= min).pop() || faixas[0];
+      if(max > min) novas.push({min: i === 0 ? 0 : min, max, rates: dona.rates});
+    });
+    faixas = novas;
+  }
+
   const segs = [];
   faixas.forEach(f=>{
     const label = tierRangeLabel(f.min, f.max);
+    const custoEnvio = frete ? freteNoPreco(frete, Math.max(f.min, 0.01)) : 0;
     const pctCheio = (f.rates.commission + f.rates.service + f.rates.transaction)/100;
     const svc = f.rates.service/100;
     const cap = f.rates.serviceCap;
     const limiar = (cap > 0 && svc > 0) ? cap/svc : Infinity;  // preço em que a taxa bate no teto
-    const semTeto = {min:f.min, max:Math.min(f.max, limiar), pct:pctCheio, fixed:f.rates.fixedFee, rates:f.rates, label, capBinds:false};
-    const comTeto = {min:Math.max(f.min, limiar), max:f.max, pct:pctCheio - svc, fixed:f.rates.fixedFee + cap, rates:f.rates, label, capBinds:true};
+    const semTeto = {min:f.min, max:Math.min(f.max, limiar), pct:pctCheio, fixed:f.rates.fixedFee + custoEnvio, frete:custoEnvio, rates:f.rates, label, capBinds:false};
+    const comTeto = {min:Math.max(f.min, limiar), max:f.max, pct:pctCheio - svc, fixed:f.rates.fixedFee + cap + custoEnvio, frete:custoEnvio, rates:f.rates, label, capBinds:true};
     if(semTeto.max > semTeto.min) segs.push(semTeto);
     if(limiar < f.max && comTeto.max > comTeto.min) segs.push(comTeto);
   });
@@ -2067,14 +2102,15 @@ function calcSku(profile, sku){
   const serviceVal = (rates.serviceCap > 0) ? Math.min(servicoCheio, rates.serviceCap) : servicoCheio;
   const transactionVal = rates.transaction/100*price;
   const fixedFee = rates.fixedFee;
+  const freteML = seg.frete || 0;   // envio informado pelo Mercado Livre para este anúncio
   const taxVal = tax*price, marketingVal = mk*price;
-  const feesTotal = commissionVal+serviceVal+transactionVal+fixedFee;
+  const feesTotal = commissionVal+serviceVal+transactionVal+fixedFee+freteML;
   const netMarketplace = price - feesTotal - sku.coupon + sku.freightNet;
   const profit = netMarketplace - sku.cogs - cc.fixedCost - cc.misc - taxVal - marketingVal;
   const marginOnNet = netMarketplace !== 0 ? (profit/netMarketplace*100) : 0;
   const marginOnPrice = price>0 ? (profit/price*100) : 0;
   return {price, commissionVal, serviceVal, transactionVal, fixedFee,
-    coupon:sku.coupon, freightNet:sku.freightNet, feesTotal, netMarketplace,
+    coupon:sku.coupon, freightNet:sku.freightNet, freteML, feesTotal, netMarketplace,
     cogs:sku.cogs, fixedCost:cc.fixedCost, misc:cc.misc, taxVal, marketingVal, profit,
     marginPct: marginOnNet, marginOnNet, marginOnPrice,
     rates, tierLabel: seg.label, capBinds: seg.capBinds && servicoCheio > rates.serviceCap,
@@ -2520,11 +2556,12 @@ function renderReceiptPanel(){
     ${line('Preço do produto', r.price)}
     ${r.freightNet !== 0 ? line('Frete: ganho/subsídio líquido', r.freightNet, r.freightNet<0?'neg':'pos') : ''}
     ${r.coupon !== 0 ? line('Cupom pago pelo vendedor', -r.coupon, 'neg') : ''}
-    <div class="rline section"><span class="lbl">Taxas do marketplace${r.tierLabel ? ' &middot; faixa ' + esc(r.tierLabel) : ''}</span><span class="val">-${brl(r.commissionVal+r.serviceVal+r.transactionVal+r.fixedFee)}</span></div>
+    <div class="rline section"><span class="lbl">Taxas do marketplace${r.tierLabel ? ' &middot; faixa ' + esc(r.tierLabel) : ''}</span><span class="val">-${brl(r.commissionVal+r.serviceVal+r.transactionVal+r.fixedFee+r.freteML)}</span></div>
     ${line('Comissão ('+pct(r.rates.commission)+')', -r.commissionVal, 'neg')}
     ${r.rates.service ? line('Taxa de serviço / envio ('+pct(r.rates.service)+(r.capBinds?', no teto':'')+')', -r.serviceVal, 'neg') : ''}
     ${r.rates.transaction ? line('Taxa de transação ('+pct(r.rates.transaction)+')', -r.transactionVal, 'neg') : ''}
     ${line(fixedFeeLabel, -r.fixedFee, r.fixedFee>0?'neg':'')}
+    ${r.freteML ? line('Envio, informado pelo Mercado Livre' + (lst.mlFreteGratis ? ' (frete grátis)' : ''), -r.freteML, 'neg') : ''}
     <div class="divider"></div>
     ${line('Valor que sobra na sua mão', r.netMarketplace, 'pos')}
     <div class="rline section"><span class="lbl">Custos da empresa</span><span class="val"></span></div>
@@ -3407,6 +3444,17 @@ function taxasDoAnuncio(sku){
   return sku.mlFaixas.map(f=>({min: Number(f.min)||0, commission: Number(f.pct)||0, service: 0, transaction: 0,
     fixedFee: Number(f.fixo)||0, serviceCap: 0}));
 }
+// Custo do envio que o Mercado Livre informa para este anúncio, por faixa de preço.
+function freteDoAnuncio(sku){
+  if(!sku || !sku.mlUsarFrete || !Array.isArray(sku.mlFreteFaixas) || !sku.mlFreteFaixas.length) return null;
+  return sku.mlFreteFaixas.map(f=>({min: Number(f.min)||0, custo: Number(f.custo)||0}));
+}
+function freteNoPreco(faixas, preco){
+  if(!faixas || !faixas.length) return 0;
+  let achado = faixas[0];
+  faixas.forEach(f=>{ if(preco >= f.min) achado = f; });
+  return achado.custo;
+}
 
 // ---------- conversa com o Apps Script ----------
 async function mlChamar(params){
@@ -3416,7 +3464,7 @@ async function mlChamar(params){
   const d = await res.json();
   if(d && d.erroML) throw new Error(d.erroML);
   if(d && d.ok === false) throw new Error(d.error || 'O Apps Script devolveu um erro.');
-  if(!d || d.ok === undefined) throw new Error('O Apps Script respondeu sem entender o pedido. Atualize o código dele para a versão 6 (aba Sincronização).');
+  if(!d || d.ok === undefined) throw new Error('O Apps Script respondeu sem entender o pedido. Atualize o código dele com o que está na aba Sincronização (Apps Script versão ' + CLIENTE_VERSAO + ').');
   return d;
 }
 async function mlPost(corpo){
@@ -3579,12 +3627,21 @@ async function mlAtualizarTaxas(){
     if(!antes.error && !depois.error && Math.abs(antes.price - depois.price) > 0.005)
       mudancas.push(`${lst.sku}: ${brl(antes.price)} → ${brl(depois.price)}`);
   });
+  // o envio vem logo depois, pelo mesmo botão: é o outro número que o ML desconta de cada venda
+  let envio = {ok: 0, erros: 0, mudancas: []};
+  try{
+    envio = await mlAtualizarFrete(vinculados);
+  }catch(err){
+    toast('As taxas entraram, mas o custo de envio não: ' + err.message, 'err', 'Envio');
+  }
   saveState();
   mlEstado.carregando = false; mlEstado.mensagem = '';
   renderML(); renderProdutos();
-  toast(`${vinculados.length - erros} anúncio(s) com as taxas do Mercado Livre.` + (erros ? ` ${erros} sem resposta do ML.` : '')
-    + (mudancas.length ? ` Preço mudou em ${mudancas.length}: ${mudancas.slice(0, 3).join(' · ')}${mudancas.length > 3 ? '...' : ''}` : ' Nenhum preço mudou.'),
-    erros ? 'warn' : 'ok', 'Taxas atualizadas');
+  const todas = mudancas.concat(envio.mudancas);
+  toast(`${vinculados.length - erros} anúncio(s) com as taxas do Mercado Livre` + (envio.ok ? ` e ${envio.ok} com o custo de envio` : '') + '.'
+    + (erros || envio.erros ? ` ${erros + envio.erros} sem resposta do ML.` : '')
+    + (todas.length ? ` Preço mudou em ${new Set(todas.map(x=> x.split(':')[0])).size}: ${todas.slice(0, 3).join(' · ')}${todas.length > 3 ? '...' : ''}` : ' Nenhum preço mudou.'),
+    (erros || envio.erros) ? 'warn' : 'ok', 'Taxas e envio atualizados');
 }
 
 function mlUsarNoAnuncio(lid, usar){
@@ -3592,6 +3649,49 @@ function mlUsarNoAnuncio(lid, usar){
   if(!a) return;
   a.lst.mlUsar = !!usar;
   saveState(); renderML(); renderProdutos();
+}
+function mlUsarFreteNoAnuncio(lid, usar){
+  const a = anuncioPorId(lid);
+  if(!a) return;
+  a.lst.mlUsarFrete = !!usar;
+  saveState(); renderML(); renderProdutos();
+}
+
+// Custo do envio, anúncio por anúncio: o Mercado Livre responde por item (peso e dimensões contam),
+// então aqui não dá para reaproveitar por categoria como nas taxas.
+async function mlAtualizarFrete(vinculados){
+  const alvos = vinculados.filter(a=> a.lst.mlItemId);
+  if(!alvos.length) return {ok:0, erros:0, mudancas:[]};
+  const tabela = {};
+  let restantes = alvos.map(a=> a.lst.mlItemId + (a.lst.mlVarId ? ':' + a.lst.mlVarId : ''));
+  while(restantes.length){
+    const lote = restantes.slice(0, 4);
+    mlEstado.mensagem = `Consultando o envio de ${Object.keys(tabela).length + lote.length} de ${alvos.length} anúncio(s)...`;
+    renderML();
+    const d = await mlChamar('ml=frete&itens=' + encodeURIComponent(lote.join(',')));
+    Object.assign(tabela, d.frete || {});
+    restantes = restantes.slice(lote.length).concat(d.faltou || []);
+  }
+  const agora = new Date().toISOString();
+  const mudancas = [];
+  let erros = 0, ok = 0;
+  alvos.forEach(({prod, lst})=>{
+    const t = tabela[lst.mlItemId + (lst.mlVarId ? ':' + lst.mlVarId : '')];
+    if(!t || t.erro || !t.faixas || !t.faixas.length){ erros++; return; }
+    const antes = calcSku(profileOf(lst.marketplaceId), visaoDoAnuncio(prod, lst));
+    lst.mlFreteFaixas = t.faixas.map(f=>({min: Number(f.min)||0, custo: Number(f.custo)||0}));
+    lst.mlFreteGratis = !!t.gratis;
+    lst.mlLogistica = t.logistica || '';
+    lst.mlFreteOutra = Number(t.outra) || 0;
+    lst.mlUsarFrete = true;
+    lst.mlFreteEm = agora;
+    lst.mlFrete = freteNoPreco(lst.mlFreteFaixas, antes.error ? 0 : antes.price);
+    const depois = calcSku(profileOf(lst.marketplaceId), visaoDoAnuncio(prod, lst));
+    ok++;
+    if(!antes.error && !depois.error && Math.abs(antes.price - depois.price) > 0.005)
+      mudancas.push(`${lst.sku}: ${brl(antes.price)} → ${brl(depois.price)}`);
+  });
+  return {ok, erros, mudancas};
 }
 
 // ---------- tela ----------
@@ -3655,18 +3755,27 @@ function renderML(){
   }).join('');
 
   const tabelaVinculos = comTaxas.length ? `<div class="preview-scroll"><table>
-      <thead><tr><th>SKU</th><th>Anúncio no ML</th><th>Tipo</th><th class="num">Comissão</th><th class="num">Custo fixo</th><th>Faixas</th><th>Usar</th></tr></thead>
+      <thead><tr><th>SKU</th><th>Anúncio no ML</th><th>Tipo</th><th class="num">Comissão</th><th class="num">Custo fixo</th><th class="num">Envio</th><th>Faixas</th><th>Usar</th></tr></thead>
       <tbody>${comTaxas.map(({prod, lst})=>{
         const r = calcSku(profileOf(lst.marketplaceId), visaoDoAnuncio(prod, lst));
-        const faixa = (lst.mlFaixas || []).filter(f=> f.min <= (r.error ? 0 : r.price)).pop() || (lst.mlFaixas || [])[0] || {pct:0, fixo:0};
+        const preco = r.error ? 0 : r.price;
+        const faixa = (lst.mlFaixas || []).filter(f=> f.min <= preco).pop() || (lst.mlFaixas || [])[0] || {pct:0, fixo:0};
+        const temFrete = (lst.mlFreteFaixas || []).length;
+        const envio = temFrete ? freteNoPreco(lst.mlFreteFaixas, preco) : null;
+        const conflito = lst.mlUsarFrete && lst.freightNet !== 0;
         return `<tr>
           <td class="cell-sku">${esc(lst.sku)}<span class="sub-val">${esc(prod.name)}</span></td>
           <td>${esc(lst.mlItemId)}${lst.mlVarId ? '/' + esc(lst.mlVarId) : ''}</td>
           <td>${esc(mlNomeDoTipo(lst.mlTipo))}</td>
           <td class="num">${pct(faixa.pct)}</td>
           <td class="num">${brl(faixa.fixo)}</td>
-          <td class="muted">${(lst.mlFaixas || []).map(f=> `${f.min ? 'a partir de ' + brl(f.min) : 'até a próxima faixa'}: ${pct(f.pct)} + ${brl(f.fixo)}`).join('<br>')}</td>
-          <td><input type="checkbox" class="ml-usar" data-mlusar="${esc(lst.id)}" ${lst.mlUsar ? 'checked' : ''} title="Usar as taxas do ML no cálculo deste anúncio"></td>
+          <td class="num">${envio === null ? '<span class="muted">--</span>' : brl(envio)}
+            <span class="sub-val">${lst.mlFreteGratis ? 'frete grátis' : 'envio por conta do comprador'}${lst.mlFreteOutra ? ' · na outra opção ' + brl(lst.mlFreteOutra) : ''}</span>
+            ${conflito ? '<span class="sub-val neg">soma com o frete digitado neste anúncio</span>' : ''}</td>
+          <td class="muted">${(lst.mlFaixas || []).map(f=> `${f.min ? 'a partir de ' + brl(f.min) : 'até a próxima faixa'}: ${pct(f.pct)} + ${brl(f.fixo)}`).join('<br>')}
+            ${temFrete > 1 ? '<br><span class="muted">envio: ' + lst.mlFreteFaixas.map(f=> (f.min ? 'a partir de ' + brl(f.min) : 'até a próxima') + ': ' + brl(f.custo)).join('; ') + '</span>' : ''}</td>
+          <td><label class="ml-uso"><input type="checkbox" data-mlusar="${esc(lst.id)}" ${lst.mlUsar ? 'checked' : ''}> taxas</label>
+            <label class="ml-uso"><input type="checkbox" data-mlusarfrete="${esc(lst.id)}" ${lst.mlUsarFrete ? 'checked' : ''} ${temFrete ? '' : 'disabled'}> envio</label></td>
         </tr>`;
       }).join('')}</tbody></table></div>
       <p class="sub" style="margin:8px 0 0;">Atualizado em ${esc(comTaxas.map(a=> a.lst.mlAtualizadoEm).sort().pop() ? dataHora(comTaxas.map(a=> a.lst.mlAtualizadoEm).sort().pop()) : '--')}. As taxas do Mercado Livre mudam de tempos em tempos: atualize quando desconfiar.</p>`
@@ -3700,9 +3809,9 @@ function renderML(){
 
     <div class="card">
       <h2>Taxas puxadas do Mercado Livre</h2>
-      <p class="sub">Comissão e custo fixo por faixa de preço, como o Mercado Livre informa para a categoria e o tipo de cada anúncio. Enquanto marcado em "Usar", o cálculo daquele anúncio ignora as taxas digitadas no cadastro do marketplace.</p>
+      <p class="sub">Comissão, custo fixo e custo de envio por faixa de preço, como o Mercado Livre informa para cada anúncio &mdash; os mesmos números que aparecem em "A pagar" na sua lista de anúncios. Enquanto marcado em "Usar", o cálculo daquele anúncio ignora as taxas digitadas no cadastro do marketplace. O envio é consultado anúncio a anúncio, porque depende do peso e das dimensões, e vem pela opção de envio que o anúncio usa hoje.</p>
       <div class="form-actions" style="margin-top:0;">
-        <button class="btn primary" id="mlTaxas" ${vinculados.length && st && st.conectado ? '' : 'disabled'}>Atualizar taxas dos vinculados</button>
+        <button class="btn primary" id="mlTaxas" ${vinculados.length && st && st.conectado ? '' : 'disabled'}>Atualizar taxas e envio dos vinculados</button>
       </div>
       ${tabelaVinculos}
     </div>`;
@@ -3742,6 +3851,7 @@ function ligarML(){
   });
   view.querySelectorAll('[data-mldesv]').forEach(b=> b.onclick = ()=> mlDesvincular(b.dataset.mldesv));
   view.querySelectorAll('[data-mlusar]').forEach(c=> c.onchange = ()=> mlUsarNoAnuncio(c.dataset.mlusar, c.checked));
+  view.querySelectorAll('[data-mlusarfrete]').forEach(c=> c.onchange = ()=> mlUsarFreteNoAnuncio(c.dataset.mlusarfrete, c.checked));
 }
 
 // ---------- EXPORTAÇÃO DE PLANILHA ----------
@@ -4788,7 +4898,7 @@ document.getElementById('resetBtn').onclick = ()=>{
 // ---------- SINCRONIZAÇÃO (Google Sheets) ----------
 const GAS_CODE = `// Versão do código. O sistema confere este número e se recusa a gravar numa planilha cujo
 // script seja mais antigo -- script antigo descarta em silêncio as colunas que não conhece.
-var SCRIPT_VERSION = 6;
+var SCRIPT_VERSION = 7;
 
 function doGet(e) {
   // as rotas do Mercado Livre não passam pela trava: são conversas externas e podem demorar
@@ -5027,6 +5137,7 @@ function mlRota(e) {
     if (acao === 'auth') return jsonResponse({ok:true, url: mlUrlDeAutorizacao(q.origem || '')});
     if (acao === 'itens') return jsonResponse(mlItens(Number(q.offset) || 0, Number(q.limit) || 50));
     if (acao === 'taxas') return jsonResponse(mlTaxas(String(q.chaves || '')));
+    if (acao === 'frete') return jsonResponse(mlFrete(String(q.itens || '')));
     if (acao === 'desconectar') return jsonResponse(mlDesconectar());
   } catch (err) {
     return mlResponderErro(err);
@@ -5193,6 +5304,68 @@ function mlFaixasDasAmostras(amostras) {
   if (atual && atual.forma === null) atual.forma = 'fixo';
   fecha();
   return faixas;
+}
+
+// Custo do envio que o VENDEDOR paga, item a item, como o Mercado Livre informa em
+// /users/{id}/shipping_options/free (o mesmo número que aparece em "A pagar" na lista de anúncios).
+// O custo muda por faixa de preço, então sonda alguns preços e monta as faixas, igual às taxas.
+// A consulta leva a opção de envio que o anúncio usa hoje (oferecer frete grátis ou não) -- a
+// própria documentação do ML pede para consultar das duas formas, então a outra também vem, como
+// referência do que aconteceria se você mudasse.
+var ML_SONDAS_FRETE = [10, 40, 78.99, 79, 150, 400];
+
+function mlCustoDoEnvio(r) {
+  if (!r || r.getResponseCode() >= 400) return null;
+  var d = JSON.parse(r.getContentText());
+  var c = d && d.coverage && d.coverage.all_country;
+  if (!c) return null;
+  return Number(c.list_cost) || 0;
+}
+
+function mlFrete(lista) {
+  var uid = mlProps().getProperty('ml_user');
+  var token = mlToken();
+  var saida = {};
+  var faltou = [];
+  var inicio = Date.now();
+  String(lista || '').split(',').filter(function (x) { return x; }).forEach(function (chave) {
+    if (Date.now() - inicio > 20000) { faltou.push(chave); return; }
+    var partes = chave.split(':');
+    var id = partes[0], variacao = partes[1] || '';
+    try {
+      var it = mlGet(ML_API + '/items/' + id + '?attributes=id,price,listing_type_id,condition,shipping');
+      var env = it.shipping || {};
+      var gratis = !!env.free_shipping;
+      var base = ML_API + '/users/' + uid + '/shipping_options/free?item_id=' + encodeURIComponent(id) +
+        (variacao ? '&variation_id=' + encodeURIComponent(variacao) : '') +
+        '&listing_type_id=' + encodeURIComponent(it.listing_type_id || '') +
+        '&condition=' + encodeURIComponent(it.condition || 'new') +
+        '&mode=' + encodeURIComponent(env.mode || 'me2') +
+        (env.logistic_type ? '&logistic_type=' + encodeURIComponent(env.logistic_type) : '') +
+        '&verbose=true';
+      var pedidos = ML_SONDAS_FRETE.map(function (preco) {
+        return {url: base + '&item_price=' + preco + '&free_shipping=' + (gratis ? 'true' : 'false'),
+          muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + token}};
+      });
+      pedidos.push({url: base + '&item_price=' + (Number(it.price) || 0) + '&free_shipping=' + (gratis ? 'false' : 'true'),
+        muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + token}});
+      var rs = UrlFetchApp.fetchAll(pedidos);
+      var faixas = [];
+      for (var i = 0; i < ML_SONDAS_FRETE.length; i++) {
+        var custo = mlCustoDoEnvio(rs[i]);
+        if (custo === null) continue;
+        var ult = faixas[faixas.length - 1];
+        if (ult && Math.abs(ult.custo - custo) < 0.005) continue;
+        faixas.push({min: faixas.length ? ML_SONDAS_FRETE[i] : 0, custo: custo});
+      }
+      if (!faixas.length) throw new Error('o Mercado Livre não devolveu custo de envio para este anúncio');
+      saida[chave] = {faixas: faixas, gratis: gratis, logistica: env.logistic_type || env.mode || '',
+        outra: mlCustoDoEnvio(rs[rs.length - 1]), precoML: Number(it.price) || 0};
+    } catch (err) {
+      saida[chave] = {erro: String(err && err.message ? err.message : err)};
+    }
+  });
+  return {ok: true, frete: saida, faltou: faltou};
 }
 
 function mlAtributo(lista, id) {
