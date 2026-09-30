@@ -850,8 +850,8 @@ function normalizaIdDigitado(texto){
 }
 
 function normalizeListing(l){
-  ['price','marginTarget','coupon','freightNet','mktFixedFee','mlPreco','mlPct','mlFixo','mlFrete','mlFreteOutra'].forEach(k=> l[k] = Number(l[k])||0);
-  ['mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlAtualizadoEm','mlLogistica','mlFreteEm'].forEach(k=> l[k] = String(l[k]===undefined||l[k]===null ? '' : l[k]));
+  ['price','marginTarget','coupon','freightNet','mktFixedFee','mlPreco','mlPct','mlFixo','mlFrete','mlFreteOutra','mlConfPreco','mlConfTaxa','mlConfEnvio'].forEach(k=> l[k] = Number(l[k])||0);
+  ['mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlAtualizadoEm','mlLogistica','mlFreteEm','mlConfEm','mlConfErro'].forEach(k=> l[k] = String(l[k]===undefined||l[k]===null ? '' : l[k]));
   l.mlUsar = toBool(l.mlUsar);
   l.mlUsarFrete = toBool(l.mlUsarFrete);
   l.mlFreteGratis = toBool(l.mlFreteGratis);
@@ -956,7 +956,8 @@ function agruparEmProdutos(rows, profiles){
       mlCategoria: r.mlCategoria, mlPreco: r.mlPreco, mlPct: r.mlPct, mlFixo: r.mlFixo, mlFaixas: r.mlFaixas,
       mlUsar: r.mlUsar, mlAtualizadoEm: r.mlAtualizadoEm,
       mlFrete: r.mlFrete, mlFreteFaixas: r.mlFreteFaixas, mlFreteGratis: r.mlFreteGratis, mlFreteOutra: r.mlFreteOutra,
-      mlLogistica: r.mlLogistica, mlUsarFrete: r.mlUsarFrete, mlFreteEm: r.mlFreteEm
+      mlLogistica: r.mlLogistica, mlUsarFrete: r.mlUsarFrete, mlFreteEm: r.mlFreteEm,
+      mlConfEm: r.mlConfEm, mlConfPreco: r.mlConfPreco, mlConfTaxa: r.mlConfTaxa, mlConfEnvio: r.mlConfEnvio, mlConfErro: r.mlConfErro
     }));
   });
   let separados = 0;
@@ -1051,7 +1052,7 @@ const CAMPOS_TEXTO_PLANILHA = {
   Marketplaces: ['id','uid','label','note','color','tiers','alteradoPor','alteradoEm'],
   Produtos: ['id','productId','productSku','sku','name','marketplaceId','alteradoPor','alteradoEm','prodAlteradoPor','prodAlteradoEm',
     'mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlFaixas','mlAtualizadoEm',
-    'mlFreteFaixas','mlLogistica','mlFreteEm'],
+    'mlFreteFaixas','mlLogistica','mlFreteEm','mlConfEm','mlConfErro'],
   Padroes: []
 };
 
@@ -1079,7 +1080,7 @@ let scriptDesatualizado = false;
 const GAS_VERSAO_MINIMA = 4;
 // Versão desta página, mandada em cada gravação. O Apps Script 5 recusa páginas mais antigas: elas
 // ainda têm o envio sem fila, que gerava conflitos falsos e desfazia alterações.
-const CLIENTE_VERSAO = 7;
+const CLIENTE_VERSAO = 8;
 const MSG_SCRIPT_ANTIGO = 'O código do Apps Script na sua planilha está desatualizado: ele não guarda o agrupamento de produtos (produto pai com um anúncio por marketplace), e o descartaria sem avisar. Para não apagar dados, nada foi enviado. Abra a aba Sincronização, copie o código novo, cole no Apps Script e publique uma NOVA VERSÃO da implantação existente (Implantar → Gerenciar implantações → lápis → Nova versão).';
 const BASE_KEY = 'mkt_pricing_base_v1';
 const USUARIO_KEY = 'mkt_pricing_usuario';
@@ -1185,7 +1186,8 @@ const CAMPOS_ANUNCIO = ['marketplaceId','sku','mode','price','marginTarget','cou
 // o editor em lote gravam "só o que mudou neles", e se estes entrassem naquela lista um salvar
 // apagaria o vínculo. Aqui eles entram na sincronização, que precisa vê-los.
 const CAMPOS_ML = ['mlItemId','mlVarId','mlTitulo','mlTipo','mlSituacao','mlCategoria','mlPreco','mlPct','mlFixo','mlFaixas','mlUsar','mlAtualizadoEm',
-  'mlFrete','mlFreteFaixas','mlFreteGratis','mlFreteOutra','mlLogistica','mlUsarFrete','mlFreteEm'];
+  'mlFrete','mlFreteFaixas','mlFreteGratis','mlFreteOutra','mlLogistica','mlUsarFrete','mlFreteEm',
+  'mlConfEm','mlConfPreco','mlConfTaxa','mlConfEnvio','mlConfErro'];
 
 // Os dados em quatro coleções de itens com chave: marketplaces (pela chave interna uid, que não
 // muda quando o ID é trocado), produtos, anúncios (com o produto a que pertencem em _prod -- assim
@@ -1396,6 +1398,7 @@ const ROTULOS_CAMPO = {
     mlFixo:'Custo fixo do ML', mlFaixas:'Faixas de taxa do ML', mlUsar:'Usar as taxas do ML', mlAtualizadoEm:'Taxas do ML atualizadas em',
     mlFrete:'Custo de envio do ML', mlFreteFaixas:'Faixas de envio do ML', mlFreteGratis:'Anúncio com frete grátis',
     mlFreteOutra:'Envio na outra opção', mlLogistica:'Logística do ML', mlUsarFrete:'Usar o envio do ML', mlFreteEm:'Envio do ML atualizado em',
+    mlConfEm:'Conferido com o ML em', mlConfPreco:'Preço conferido', mlConfTaxa:'Taxa informada pelo ML', mlConfEnvio:'Envio informado pelo ML', mlConfErro:'Erro na conferência',
     marginTarget:'Margem alvo %', coupon:'Cupom', freightNet:'Frete líquido', mktFixedFee:'Taxa fixa do anúncio'},
   marketplace: {id:'ID', label:'Nome', color:'Cor', confidence:'Confiança', note:'Observação', commission:'Comissão %', ehMercadoLivre:'É o Mercado Livre',
     service:'Taxa de serviço %', transaction:'Taxa de transação %', fixedFee:'Taxa fixa', dualAdPrice:'Preço de anúncio duplo',
@@ -3703,6 +3706,92 @@ async function mlAtualizarFrete(vinculados){
   return {ok, erros, mudancas};
 }
 
+// O que o sistema calcula para um preço, com as faixas guardadas daquele anúncio.
+function mlNossoNoPreco(lst, preco){
+  const faixa = (lst.mlFaixas || []).filter(f=> f.min <= preco).pop() || (lst.mlFaixas || [])[0];
+  const taxa = faixa ? (preco * (Number(faixa.pct) || 0) / 100 + (Number(faixa.fixo) || 0)) : null;
+  const envio = (lst.mlFreteFaixas || []).length ? freteNoPreco(lst.mlFreteFaixas, preco) : 0;
+  return {taxa, envio, recebe: taxa === null ? null : preco - taxa - envio};
+}
+const ML_TOLERANCIA = 0.01;   // um centavo: abaixo disso é arredondamento, não divergência
+
+// Resultado da última conferência daquele anúncio contra o Mercado Livre.
+function mlConferencia(lst){
+  if(lst.mlConfErro) return `<span class="neg">não conferido</span><span class="sub-val">${esc(lst.mlConfErro)}</span>`;
+  if(!lst.mlConfEm) return '<span class="muted">ainda não conferido</span>';
+  const preco = Number(lst.mlConfPreco) || 0;
+  const nosso = mlNossoNoPreco(lst, preco);
+  const difTaxa = Math.abs((nosso.taxa === null ? 0 : nosso.taxa) - Number(lst.mlConfTaxa));
+  const difEnvio = Math.abs(nosso.envio - Number(lst.mlConfEnvio));
+  const recebeML = preco - Number(lst.mlConfTaxa) - Number(lst.mlConfEnvio);
+  if(difTaxa <= ML_TOLERANCIA && difEnvio <= ML_TOLERANCIA)
+    return `<b class="pos">bate</b><span class="sub-val">no preço de lá (${brl(preco)}) você recebe ${brl(recebeML)}</span>`;
+  return `<b class="neg">difere ${brl(Math.max(difTaxa, difEnvio))}</b>
+    <span class="sub-val">no preço de lá (${brl(preco)}) &middot; taxa: aqui ${brl(nosso.taxa || 0)} / ML ${brl(lst.mlConfTaxa)}
+    &middot; envio: aqui ${brl(nosso.envio)} / ML ${brl(lst.mlConfEnvio)}</span>`;
+}
+function mlEstadoDaConferencia(lst){
+  if(lst.mlConfErro) return 'erro';
+  if(!lst.mlConfEm) return 'semconferir';
+  const preco = Number(lst.mlConfPreco) || 0;
+  const nosso = mlNossoNoPreco(lst, preco);
+  const difTaxa = Math.abs((nosso.taxa === null ? 0 : nosso.taxa) - Number(lst.mlConfTaxa));
+  const difEnvio = Math.abs(nosso.envio - Number(lst.mlConfEnvio));
+  return (difTaxa <= ML_TOLERANCIA && difEnvio <= ML_TOLERANCIA) ? 'bate' : 'difere';
+}
+
+// Confere todos os anúncios vinculados contra o Mercado Livre, em blocos. Grava a cada bloco: se
+// parar no meio (aba fechada, conexão caindo), o que já foi conferido continua valendo, e clicar de
+// novo continua de onde parou quando a opção "só o que falta" está marcada.
+async function mlConferirTudo(quais){
+  let alvos = mlAnuncios().filter(a=> a.lst.mlItemId);
+  if(quais === 'faltando') alvos = alvos.filter(a=> !a.lst.mlConfEm || a.lst.mlConfErro);
+  if(quais === 'divergentes') alvos = alvos.filter(a=> mlEstadoDaConferencia(a.lst) === 'difere');
+  if(!alvos.length){ toast('Nada para conferir com esse filtro.', 'warn'); return; }
+  mlEstado.carregando = true;
+  const porChave = new Map(alvos.map(a=> [a.lst.mlItemId + (a.lst.mlVarId ? ':' + a.lst.mlVarId : ''), a]));
+  let restantes = [...porChave.keys()];
+  let batem = 0, diferem = 0, erros = 0, feitos = 0;
+  try{
+    while(restantes.length){
+      const lote = restantes.slice(0, 8);
+      mlEstado.mensagem = `Conferindo ${feitos + lote.length} de ${alvos.length} anúncio(s) com o Mercado Livre...`;
+      renderML();
+      const d = await mlChamar('ml=conferir&itens=' + encodeURIComponent(lote.join(',')));
+      const resp = d.conferencia || {};
+      Object.keys(resp).forEach(chave=>{
+        const alvo = porChave.get(chave);
+        if(!alvo) return;
+        const r = resp[chave], lst = alvo.lst;
+        lst.mlConfEm = new Date().toISOString();
+        if(r.erro || r.taxa === null || r.taxa === undefined){
+          lst.mlConfErro = r.erro || 'o Mercado Livre não devolveu a taxa deste anúncio';
+          erros++;
+        } else {
+          lst.mlConfErro = '';
+          lst.mlConfPreco = Number(r.preco) || 0;
+          lst.mlConfTaxa = Number(r.taxa) || 0;
+          lst.mlConfEnvio = Number(r.envio) || 0;
+          if(r.tipo) lst.mlTipo = r.tipo;
+          lst.mlPreco = Number(r.preco) || lst.mlPreco;
+          lst.mlFreteGratis = !!r.gratis;
+          if(mlEstadoDaConferencia(lst) === 'bate') batem++; else diferem++;
+        }
+        feitos++;
+      });
+      restantes = restantes.slice(lote.length).concat(d.faltou || []);
+      saveState();   // grava o que já foi conferido antes de seguir
+    }
+  }catch(err){
+    toast(err.message, 'err', 'Conferência interrompida');
+  }
+  mlEstado.carregando = false; mlEstado.mensagem = '';
+  if(diferem) mlEstado.filtroConf = 'difere';
+  renderML(); renderProdutos();
+  toast(`${batem} anúncio(s) batem com o Mercado Livre` + (diferem ? `, ${diferem} divergem` : '') + (erros ? `, ${erros} sem resposta` : '') + '.'
+    + (diferem ? ' Deixei a lista filtrada nos que divergem.' : ''), diferem || erros ? 'warn' : 'ok', 'Conferência com o Mercado Livre');
+}
+
 // ---------- tela ----------
 function renderML(){
   const box = document.getElementById('view-ml');
@@ -3776,9 +3865,28 @@ function renderML(){
     </tr>`;
   }).join('');
 
-  const tabelaVinculos = comTaxas.length ? `<div class="preview-scroll"><table>
-      <thead><tr><th>SKU</th><th>Anúncio no ML</th><th>Tipo</th><th class="num">Comissão</th><th class="num">Custo fixo</th><th class="num">Envio</th><th>Faixas</th><th>Usar</th></tr></thead>
-      <tbody>${comTaxas.map(({prod, lst})=>{
+  // Em catálogo grande a tabela fica longa: o filtro deixa ir direto ao que precisa de atenção,
+  // e a lista mostra até 300 linhas por vez.
+  const filtroConf = mlEstado.filtroConf || 'todos';
+  const contagem = {todos: comTaxas.length, difere: 0, semconferir: 0, erro: 0, bate: 0};
+  comTaxas.forEach(a=> contagem[mlEstadoDaConferencia(a.lst)]++);
+  const filtrados = filtroConf === 'todos' ? comTaxas : comTaxas.filter(a=> mlEstadoDaConferencia(a.lst) === filtroConf);
+  const LIMITE_LINHAS = 300;
+  const mostrados = filtrados.slice(0, LIMITE_LINHAS);
+  const barraConf = comTaxas.length ? `<div class="form-actions" style="margin:0 0 10px;">
+      <select id="mlFiltroConf">
+        <option value="todos" ${filtroConf==='todos'?'selected':''}>Todos (${contagem.todos})</option>
+        <option value="difere" ${filtroConf==='difere'?'selected':''}>Só os que divergem do ML (${contagem.difere})</option>
+        <option value="bate" ${filtroConf==='bate'?'selected':''}>Só os que batem (${contagem.bate})</option>
+        <option value="semconferir" ${filtroConf==='semconferir'?'selected':''}>Ainda não conferidos (${contagem.semconferir})</option>
+        <option value="erro" ${filtroConf==='erro'?'selected':''}>Sem resposta do ML (${contagem.erro})</option>
+      </select>
+      <span class="muted">${filtrados.length} linha(s)${filtrados.length > LIMITE_LINHAS ? ', mostrando as ' + LIMITE_LINHAS + ' primeiras' : ''}</span>
+    </div>` : '';
+
+  const tabelaVinculos = comTaxas.length ? barraConf + `<div class="preview-scroll"><table>
+      <thead><tr><th>SKU</th><th>Anúncio no ML</th><th>Tipo</th><th class="num">Comissão</th><th class="num">Custo fixo</th><th class="num">Envio</th><th class="num">Confere com o ML</th><th>Faixas</th><th>Usar</th></tr></thead>
+      <tbody>${mostrados.map(({prod, lst})=>{
         const r = calcSku(profileOf(lst.marketplaceId), visaoDoAnuncio(prod, lst));
         const preco = r.error ? 0 : r.price;
         const faixa = (lst.mlFaixas || []).filter(f=> f.min <= preco).pop() || (lst.mlFaixas || [])[0] || {pct:0, fixo:0};
@@ -3794,6 +3902,7 @@ function renderML(){
           <td class="num">${envio === null ? '<span class="muted">--</span>' : brl(envio)}
             <span class="sub-val">${lst.mlFreteGratis ? 'frete grátis' : 'envio por conta do comprador'}${lst.mlFreteOutra ? ' · na outra opção ' + brl(lst.mlFreteOutra) : ''}</span>
             ${conflito ? '<span class="sub-val neg">soma com o frete digitado neste anúncio</span>' : ''}</td>
+          <td class="num">${mlConferencia(lst)}</td>
           <td class="muted">${(lst.mlFaixas || []).map(f=> `${f.min ? 'a partir de ' + brl(f.min) : 'até a próxima faixa'}: ${pct(f.pct)} + ${brl(f.fixo)}`).join('<br>')}
             ${temFrete > 1 ? '<br><span class="muted">envio: ' + lst.mlFreteFaixas.map(f=> (f.min ? 'a partir de ' + brl(f.min) : 'até a próxima') + ': ' + brl(f.custo)).join('; ') + '</span>' : ''}</td>
           <td><label class="ml-uso"><input type="checkbox" data-mlusar="${esc(lst.id)}" ${lst.mlUsar ? 'checked' : ''}> taxas</label>
@@ -3834,6 +3943,8 @@ function renderML(){
       <p class="sub">Comissão, custo fixo e custo de envio por faixa de preço, como o Mercado Livre informa para cada anúncio &mdash; os mesmos números que aparecem em "A pagar" na sua lista de anúncios. Enquanto marcado em "Usar", o cálculo daquele anúncio ignora as taxas digitadas no cadastro do marketplace. O envio é consultado anúncio a anúncio, porque depende do peso e das dimensões, e vem pela opção de envio que o anúncio usa hoje.</p>
       <div class="form-actions" style="margin-top:0;">
         <button class="btn primary" id="mlTaxas" ${vinculados.length && st && st.conectado ? '' : 'disabled'}>Atualizar taxas e envio dos vinculados</button>
+        <button class="btn" id="mlConferir" ${comTaxas.length && st && st.conectado ? '' : 'disabled'} title="Pergunta ao Mercado Livre a taxa e o envio no preço atual de cada anúncio e compara com o que o sistema calcula">Conferir tudo com o Mercado Livre</button>
+        <button class="btn small" id="mlConferirFaltando" ${comTaxas.length && st && st.conectado ? '' : 'disabled'} title="Continua de onde parou: só os que ainda não foram conferidos">Conferir só o que falta</button>
       </div>
       ${tabelaVinculos}
     </div>`;
@@ -3852,6 +3963,10 @@ function ligarML(){
   liga('mlBuscar', mlCarregarItens);
   liga('mlVincularSugeridos', mlVincularSugeridos);
   liga('mlTaxas', mlAtualizarTaxas);
+  liga('mlConferir', ()=> mlConferirTudo('todos'));
+  liga('mlConferirFaltando', ()=> mlConferirTudo('faltando'));
+  const filtroConf = q('mlFiltroConf');
+  if(filtroConf) filtroConf.onchange = ()=>{ mlEstado.filtroConf = filtroConf.value; renderML(); };
   const urlAuth = q('mlUrlAuth');
   if(urlAuth) urlAuth.onclick = ()=> urlAuth.select();
   liga('mlUsarRetornoComum', ()=>{
@@ -4926,7 +5041,7 @@ document.getElementById('resetBtn').onclick = ()=>{
 // ---------- SINCRONIZAÇÃO (Google Sheets) ----------
 const GAS_CODE = `// Versão do código. O sistema confere este número e se recusa a gravar numa planilha cujo
 // script seja mais antigo -- script antigo descarta em silêncio as colunas que não conhece.
-var SCRIPT_VERSION = 7;
+var SCRIPT_VERSION = 8;
 
 function doGet(e) {
   // as rotas do Mercado Livre não passam pela trava: são conversas externas e podem demorar
@@ -5192,6 +5307,7 @@ function mlRota(e) {
     if (acao === 'itens') return jsonResponse(mlItens(Number(q.offset) || 0, Number(q.limit) || 50));
     if (acao === 'taxas') return jsonResponse(mlTaxas(String(q.chaves || '')));
     if (acao === 'frete') return jsonResponse(mlFrete(String(q.itens || '')));
+    if (acao === 'conferir') return jsonResponse(mlConferir(String(q.itens || '')));
     if (acao === 'desconectar') return jsonResponse(mlDesconectar());
   } catch (err) {
     return mlResponderErro(err);
@@ -5384,7 +5500,9 @@ function mlFaixasDasAmostras(amostras) {
 // A consulta leva a opção de envio que o anúncio usa hoje (oferecer frete grátis ou não) -- a
 // própria documentação do ML pede para consultar das duas formas, então a outra também vem, como
 // referência do que aconteceria se você mudasse.
-var ML_SONDAS_FRETE = [10, 40, 78.99, 79, 150, 400];
+// Preços de sondagem do envio. Ficam nos degraus que o Mercado Livre usa (29, 50 e 79), com o
+// centavo de antes de cada um, senão uma faixa inteira herda o custo da faixa anterior.
+var ML_SONDAS_FRETE = [10, 28.99, 29, 49.99, 50, 78.99, 79, 150, 400];
 
 // Refaz em bloco as consultas que voltaram com 429 (consultas demais em pouco tempo).
 function mlFetchAll(pedidos) {
@@ -5450,6 +5568,63 @@ function mlFrete(lista) {
     }
   });
   return {ok: true, frete: saida, faltou: faltou};
+}
+
+// Conferência: pergunta ao Mercado Livre a taxa e o custo de envio NO PREÇO QUE O ANÚNCIO TEM HOJE,
+// para o sistema comparar com o que ele calcula e apontar sozinho o que não bate. São só duas
+// consultas por anúncio (contra as nove da sondagem completa), então serve para catálogo grande.
+function mlConferir(lista) {
+  var uid = mlProps().getProperty('ml_user');
+  var token = mlToken();
+  var saida = {};
+  var faltou = [];
+  var inicio = Date.now();
+  String(lista || '').split(',').filter(function (x) { return x; }).forEach(function (chave) {
+    if (Date.now() - inicio > 20000) { faltou.push(chave); return; }   // o resto vem na próxima chamada
+    var partes = chave.split(':');
+    var id = partes[0], variacao = partes[1] || '';
+    try {
+      var it = mlGet(ML_API + '/items/' + id + '?attributes=id,price,listing_type_id,condition,category_id,shipping,variations');
+      var preco = Number(it.price) || 0;
+      if (variacao && it.variations) {
+        it.variations.forEach(function (v) { if (String(v.id) === variacao && v.price) preco = Number(v.price); });
+      }
+      var env = it.shipping || {};
+      var pedidos = [
+        {url: ML_API + '/sites/' + ML_SITE + '/listing_prices?price=' + preco +
+          '&category_id=' + encodeURIComponent(it.category_id || '') +
+          '&listing_type_id=' + encodeURIComponent(it.listing_type_id || ''),
+          muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + token}},
+        {url: ML_API + '/users/' + uid + '/shipping_options/free?item_id=' + encodeURIComponent(id) +
+          (variacao ? '&variation_id=' + encodeURIComponent(variacao) : '') +
+          '&item_price=' + preco +
+          '&listing_type_id=' + encodeURIComponent(it.listing_type_id || '') +
+          '&condition=' + encodeURIComponent(it.condition || 'new') +
+          '&mode=' + encodeURIComponent(env.mode || 'me2') +
+          (env.logistic_type ? '&logistic_type=' + encodeURIComponent(env.logistic_type) : '') +
+          '&free_shipping=' + (env.free_shipping ? 'true' : 'false') + '&verbose=true',
+          muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + token}}
+      ];
+      var rs = mlFetchAll(pedidos);
+      var taxa = null, pct = null, fixo = null;
+      if (rs[0].getResponseCode() < 400) {
+        var d = JSON.parse(rs[0].getContentText());
+        if (Array.isArray(d)) d = d[0];
+        if (d && d.sale_fee_details) {
+          pct = Number(d.sale_fee_details.percentage_fee) || 0;
+          fixo = Number(d.sale_fee_details.fixed_fee) || 0;
+          taxa = (d.sale_fee_amount === undefined || d.sale_fee_amount === null)
+            ? (preco * pct / 100 + fixo) : Number(d.sale_fee_amount);
+        }
+      }
+      var envio = mlCustoDoEnvio(rs[1]);
+      saida[chave] = {preco: preco, taxa: taxa, pct: pct, fixo: fixo, envio: envio,
+        gratis: !!env.free_shipping, tipo: it.listing_type_id || '', situacao: it.status || ''};
+    } catch (err) {
+      saida[chave] = {erro: String(err && err.message ? err.message : err)};
+    }
+  });
+  return {ok: true, conferencia: saida, faltou: faltou};
 }
 
 function mlAtributo(lista, id) {
