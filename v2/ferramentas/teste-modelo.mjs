@@ -17,7 +17,7 @@ const copia = o => JSON.parse(JSON.stringify(o));
 
 // ---------------------------------------------------------------- um catálogo da v1 com casos difíceis
 const v1cru = {
-  padroes: { fixedCost: 1.5, misc: 0.25, taxPct: 7.3, marketingPct: 3, coupon: 0.5, freightNet: -2 },
+  padroes: { fixedCost: 1.5, misc: 0.25, taxPct: 7.3, marketingPct: 3, coupon: 0.5, freightNet: -2, envioCombinarPct: 12 },
   profiles: [
     { id: 'shopee', uid: 'm:shopee', label: 'Shopee', color: '#ee4d2d', confidence: 'alta', note: 'nota "com aspas"',
       commission: 17.63, service: 3.44, transaction: 1.96, fixedFee: 4, dualAdPrice: true, variableFreight: true, idManual: true },
@@ -41,7 +41,9 @@ const v1cru = {
           mlUsarFrete: true, mlFreteFaixas: [{ min: 0, custo: 0 }, { min: 79, custo: 21.95 }], mlFreteGratis: true, mlFreteOutra: 12.5,
           mlLogistica: 'fulfillment', mlFreteEm: '2026-09-29T23:14:06.000Z', mlFrete: 21.95,
           mlConfEm: '2026-09-30T01:00:00.000Z', mlConfPreco: 99.9, mlConfTaxa: 11.99, mlConfEnvio: 21.95, mlConfErro: '' },
-        { id: 'l3', marketplaceId: 'tiktok', sku: 'XPTO-99', mode: 'price', price: 49.99, marginTarget: 0, coupon: 0, freightNet: 0, mktFixedFee: 0 }
+        { id: 'l3', marketplaceId: 'tiktok', sku: 'XPTO-99', mode: 'price', price: 49.99, marginTarget: 0, coupon: 0, freightNet: 0, mktFixedFee: 0,
+          // entrega a combinar com o comprador: envio = percentual do preço
+          mlUsarFrete: true, mlFreteFaixas: [{ min: 0, custo: 0, combinar: true }], mlLogistica: 'not_specified' }
       ] },
     { id: 'p2', sku: '07-01-46', name: 'Produto com custo próprio', cogs: 20, costOverride: true, fixedCost: 2, misc: 1, taxPct: 12,
       marketingPct: 8, listings: [
@@ -80,7 +82,7 @@ function linhasDoBanco(estado){
 
 // ---------------------------------------------------------------- 1. ida e volta
 const linhas = linhasDoBanco(v1);
-ok(linhas.vinculos.length === 2, 'vínculo guardado para o anúncio ligado e para o que sobrou do desvinculado (' + linhas.vinculos.length + ')');
+ok(linhas.vinculos.length === 3, 'vínculo guardado para o anúncio ligado, o que sobrou do desvinculado e o de entrega a combinar (' + linhas.vinculos.length + ')');
 ok(linhas.vinculos.find(v=> v.anuncio_id === 'l4').item_id === '', 'o que sobrou do desvinculado fica com anúncio do ML vazio');
 const c = modelo.conferirComV1(v1, linhas, v1f);
 ok(c.problemas.length === 0, 'ida e volta sem diferença nenhuma' + (c.problemas.length ? ': ' + c.problemas.slice(0, 5).join(' | ') : ''));
@@ -88,6 +90,8 @@ ok(c.anunciosConferidos === 5 && c.calculosIguais === 5, `5 anúncios conferidos
 const volta = normalizeState(Object.assign(modelo.estadoDoBanco(linhas), { selectedSkuId: null }));
 ok(volta.products.find(p=> p.id === 'p1').cogs === 11.123456789012345, 'CMV com 15 casas volta exato');
 ok(volta.products.find(p=> p.id === 'p3').listings.length === 0, 'produto sem anúncio continua existindo');
+ok(volta.products[0].listings.find(l=> l.id === 'l3').mlFreteFaixas[0].combinar === true && volta.padroes.envioCombinarPct === 12,
+  'entrega a combinar e o percentual da empresa (12%) voltam iguais');
 ok(volta.products.find(p=> p.id === 'p2').listings.find(l=> l.id === 'l5').marketplaceId === 'amazonantiga', 'anúncio órfão continua no código antigo');
 ok(!volta.profiles.some(p=> p.id === 'amazonantiga'), 'marketplace removido não aparece na lista de marketplaces');
 ok(modelo.canon(volta.profiles.map(p=> p.id)) === modelo.canon(['shopee', 'meli', 'tiktok']), 'ordem dos marketplaces mantida');
@@ -98,6 +102,8 @@ const estraga = [
   ['faixa de taxa do ML', L=> { L.vinculos.find(v=> v.anuncio_id === 'l2').faixas_taxa[1].fixo = 6; }, /mlFaixas/],
   ['envio do desvinculado perdido', L=> { L.vinculos = L.vinculos.filter(v=> v.anuncio_id !== 'l4'); }, /mlFreteFaixas|mlUsarFrete/],
   ['custo da empresa', L=> { L.empresa.imposto_pct = 7.31; }, /taxPct/],
+  ['percentual da entrega a combinar', L=> { L.empresa.envio_combinar_pct = 20; }, /envioCombinarPct/],
+  ['marca de entrega a combinar perdida', L=> { L.vinculos.find(v=> v.anuncio_id === 'l3').faixas_envio = [{ min: 0, custo: 0 }]; }, /mlFreteFaixas/],
   ['faixa de preço do marketplace', L=> { L.marketplaces.find(m=> m.codigo === 'tiktok').faixas[0].commission = 9; }, /tiers/],
   ['produto sumiu', L=> { L.produtos = L.produtos.filter(p=> p.id !== 'p3'); }, /não está na v2/],
   ['anúncio mudou de marketplace', L=> { L.anuncios.find(a=> a.id === 'l1').marketplace_id = 'm:tiktok'; }, /marketplace/],

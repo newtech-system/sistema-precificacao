@@ -2,7 +2,7 @@
 // Motor de cálculo -- GERADO a partir da versão 1 (index.html) por extrair-calculo.js.
 // NÃO EDITE À MÃO: as funções abaixo são cópia literal das da v1, para as duas versões
 // calcularem exatamente igual. A única troca é de onde vêm os custos da empresa
-// (state.padroes na v1, CUSTOS_EMPRESA aqui: 4 ocorrência(s)).
+// (state.padroes na v1, CUSTOS_EMPRESA aqui: 5 ocorrência(s)).
 // ============================================================================
 
 const FMT_BRL = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
@@ -58,7 +58,19 @@ function taxasDoAnuncio(sku){
 
 function freteDoAnuncio(sku){
   if(!sku || !sku.mlUsarFrete || !Array.isArray(sku.mlFreteFaixas) || !sku.mlFreteFaixas.length) return null;
-  return sku.mlFreteFaixas.map(f=>({min: Number(f.min)||0, custo: Number(f.custo)||0}));
+  return sku.mlFreteFaixas.map(f=> Object.assign({min: Number(f.min)||0, custo: Number(f.custo)||0}, f.combinar === true ? {combinar: true} : {}));
+}
+
+function envioCombinarPct(){
+  const v = CUSTOS_EMPRESA.envioCombinarPct;
+  return (v === undefined || v === null) ? 20 : (Number(v) || 0);
+}
+
+function fretePctNoPreco(faixas, preco){
+  if(!faixas || !faixas.length) return 0;
+  let achado = faixas[0];
+  faixas.forEach(f=>{ if(preco >= f.min) achado = f; });
+  return achado.combinar ? envioCombinarPct() : 0;
 }
 
 function freteNoPreco(faixas, preco){
@@ -109,12 +121,14 @@ function feeSegments(profile, sku){
   faixas.forEach(f=>{
     const label = tierRangeLabel(f.min, f.max);
     const custoEnvio = frete ? freteNoPreco(frete, Math.max(f.min, 0.01)) : 0;
+    // entrega a combinar: o envio é um percentual do preço, então entra junto com as taxas percentuais
+    const envioPct = frete ? fretePctNoPreco(frete, Math.max(f.min, 0.01)) : 0;
     const pctCheio = (f.rates.commission + f.rates.service + f.rates.transaction)/100;
     const svc = f.rates.service/100;
     const cap = f.rates.serviceCap;
     const limiar = (cap > 0 && svc > 0) ? cap/svc : Infinity;  // preço em que a taxa bate no teto
-    const semTeto = {min:f.min, max:Math.min(f.max, limiar), pct:pctCheio, fixed:f.rates.fixedFee + custoEnvio, frete:custoEnvio, rates:f.rates, label, capBinds:false};
-    const comTeto = {min:Math.max(f.min, limiar), max:f.max, pct:pctCheio - svc, fixed:f.rates.fixedFee + cap + custoEnvio, frete:custoEnvio, rates:f.rates, label, capBinds:true};
+    const semTeto = {min:f.min, max:Math.min(f.max, limiar), pct:pctCheio + envioPct/100, fixed:f.rates.fixedFee + custoEnvio, frete:custoEnvio, fretePct:envioPct, rates:f.rates, label, capBinds:false};
+    const comTeto = {min:Math.max(f.min, limiar), max:f.max, pct:pctCheio - svc + envioPct/100, fixed:f.rates.fixedFee + cap + custoEnvio, frete:custoEnvio, fretePct:envioPct, rates:f.rates, label, capBinds:true};
     if(semTeto.max > semTeto.min) segs.push(semTeto);
     if(limiar < f.max && comTeto.max > comTeto.min) segs.push(comTeto);
   });
@@ -180,7 +194,8 @@ function calcSku(profile, sku){
   const serviceVal = (rates.serviceCap > 0) ? Math.min(servicoCheio, rates.serviceCap) : servicoCheio;
   const transactionVal = rates.transaction/100*price;
   const fixedFee = rates.fixedFee;
-  const freteML = seg.frete || 0;   // envio informado pelo Mercado Livre para este anúncio
+  // envio informado pelo Mercado Livre para este anúncio (e, na entrega a combinar, o percentual do preço)
+  const freteML = (seg.frete || 0) + (seg.fretePct || 0)/100*price;
   const taxVal = tax*price, marketingVal = mk*price;
   const feesTotal = commissionVal+serviceVal+transactionVal+fixedFee+freteML;
   const netMarketplace = price - feesTotal - sku.coupon + sku.freightNet;
@@ -192,7 +207,7 @@ function calcSku(profile, sku){
     cogs:sku.cogs, fixedCost:cc.fixedCost, misc:cc.misc, taxVal, marketingVal, profit,
     marginPct: marginOnNet, marginOnNet, marginOnPrice,
     rates, tierLabel: seg.label, capBinds: seg.capBinds && servicoCheio > rates.serviceCap,
-    tiered: segs.length > 1};
+    tiered: segs.length > 1, fretePct: seg.fretePct || 0};
 }
 
 export { calcSku, adPrices, feeSegments, segmentForPrice, tierRangeLabel, freteNoPreco, taxasDoAnuncio, freteDoAnuncio, roundToBreakpoint };

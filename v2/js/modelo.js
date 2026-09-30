@@ -43,7 +43,8 @@ export const CAMPOS_ML = [
 ];
 export const CAMPOS_PADROES = [
   ['fixedCost', 'custo_fixo', 'num'], ['misc', 'outros_custos', 'num'], ['taxPct', 'imposto_pct', 'num'],
-  ['marketingPct', 'marketing_pct', 'num'], ['coupon', 'cupom_padrao', 'num'], ['freightNet', 'frete_padrao', 'num']
+  ['marketingPct', 'marketing_pct', 'num'], ['coupon', 'cupom_padrao', 'num'], ['freightNet', 'frete_padrao', 'num'],
+  ['envioCombinarPct', 'envio_combinar_pct', 'num']
 ];
 
 // Data do banco (com microssegundos e fuso) -> texto ISO da v1 (milissegundos, Z). Assim a mesma

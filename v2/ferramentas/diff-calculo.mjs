@@ -16,7 +16,7 @@ function extrai(nome){
   return h.slice(ini + 1, i + 1);
 }
 const nomes = ['roundToBreakpoint','adPrices','effectiveCompanyCosts','effectiveFixedFee','tierRangeLabel',
-  'taxasDoAnuncio','freteDoAnuncio','freteNoPreco','feeSegments','segmentForPrice','calcSku'];
+  'taxasDoAnuncio','freteDoAnuncio','envioCombinarPct','fretePctNoPreco','freteNoPreco','feeSegments','segmentForPrice','calcSku'];
 const ctx = {state: {padroes: {}}, Intl, isFinite, Math, Number, Infinity, Array, Object, String};
 ctx.brl = v => String(v);   // só usado em rótulos de faixa
 vm.createContext(ctx);
@@ -48,17 +48,20 @@ function anuncioAleatorio(){
     a.mlFaixas = [{min: 0, pct: 62, fixo: 0}, {min: 12.5, pct: 12, fixo: 6.25}, {min: 29, pct: 12, fixo: 6.5},
                   {min: 50, pct: 12, fixo: 6.75}, {min: 79, pct: entre(10, 19), fixo: 0}];
     a.mlUsarFrete = r() < 0.8;
-    a.mlFreteFaixas = [{min: 0, custo: 5.65}, {min: 29, custo: 7.45}, {min: 50, custo: 8.75}, {min: 79, custo: entre(8, 25)}];
+    a.mlFreteFaixas = r() < 0.3
+      ? [{min: 0, custo: 0, combinar: true}]   // entrega a combinar: percentual do preço
+      : [{min: 0, custo: 5.65}, {min: 29, custo: 7.45}, {min: 50, custo: 8.75}, {min: 79, custo: entre(8, 25)}];
   }
   return a;
 }
 
 const campos = ['price', 'netMarketplace', 'profit', 'marginOnNet', 'marginOnPrice', 'commissionVal', 'serviceVal',
-  'transactionVal', 'fixedFee', 'freteML', 'feesTotal', 'taxVal', 'marketingVal'];
+  'transactionVal', 'fixedFee', 'freteML', 'fretePct', 'feesTotal', 'taxVal', 'marketingVal'];
 let testes = 0, erros = 0, inviaveis = 0;
 const exemplos = [];
 for(let k = 0; k < 20000; k++){
-  const padroes = {fixedCost: entre(0, 4), misc: entre(0, 1), taxPct: entre(0, 10), marketingPct: entre(0, 6)};
+  const padroes = {fixedCost: entre(0, 4), misc: entre(0, 1), taxPct: entre(0, 10), marketingPct: entre(0, 6),
+    envioCombinarPct: r() < 0.2 ? undefined : entre(0, 30)};
   ctx.state.padroes = padroes;
   definirCustosDaEmpresa(padroes);
   const perfil = perfilAleatorio(), anuncio = anuncioAleatorio();

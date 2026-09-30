@@ -88,6 +88,9 @@ function normalizeProfile(p){
 function normalizePadroes(p){
   const out = {};
   ['fixedCost','misc','taxPct','marketingPct','coupon','freightNet'].forEach(k=> out[k] = Number(p[k])||0);
+  // entrega a combinar com o comprador: sem valor gravado, vale o padrão de 20% do preço
+  const c = p.envioCombinarPct;
+  out.envioCombinarPct = (c === undefined || c === null || String(c).trim() === '') ? 20 : (Number(c)||0);
   return out;
 }
 
@@ -102,7 +105,9 @@ function normalizeListing(l){
     try{ l.mlFreteFaixas = JSON.parse(txtF || '[]'); }catch(e){ l.mlFreteFaixas = []; }
   }
   if(!Array.isArray(l.mlFreteFaixas)) l.mlFreteFaixas = [];
-  l.mlFreteFaixas = l.mlFreteFaixas.map(f=>({min: Number(f.min)||0, custo: Number(f.custo)||0})).sort((a,b)=> a.min - b.min);
+  // "combinar": entrega a combinar com o comprador (o envio é um percentual do preço, ver envioCombinarPct)
+  l.mlFreteFaixas = l.mlFreteFaixas.map(f=> Object.assign({min: Number(f.min)||0, custo: Number(f.custo)||0},
+    toBool(f.combinar) ? {combinar: true} : {})).sort((a,b)=> a.min - b.min);
   // as faixas de taxa do Mercado Livre viajam como JSON numa célula da planilha
   if(typeof l.mlFaixas === 'string'){
     const txt = l.mlFaixas.trim().replace(/^'/, '');

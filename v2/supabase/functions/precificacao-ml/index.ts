@@ -287,6 +287,13 @@ async function mlFrete(ml: ML, lista: string) {
     try {
       const it = await ml.get(ML_API + '/items/' + id + '?attributes=id,price,listing_type_id,condition,shipping,category_id,status');
       const env = it.shipping || {};
+      // "Combinar com o comprador": o ML não calcula envio. A tela reserva um percentual do preço
+      // (definido por empresa na tela do Mercado Livre) para o frete combinado. Igual à v1.
+      if (env.mode === 'not_specified') {
+        saida[chave] = { faixas: [{ min: 0, custo: 0, combinar: true }], gratis: false, logistica: 'not_specified', outra: 0,
+          precoML: Number(it.price) || 0, categoria: it.category_id || '', tipo: it.listing_type_id || '', situacao: it.status || '' };
+        continue;
+      }
       const gratis = !!env.free_shipping;
       const base = baseDoEnvio(ml, id, variacao, it);
       const urls = ML_SONDAS_FRETE.map((p) => base + '&item_price=' + p + '&free_shipping=' + (gratis ? 'true' : 'false'));

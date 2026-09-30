@@ -20,7 +20,7 @@ function extraiFuncao(nome){
 }
 
 const FUNCOES = ['roundToBreakpoint', 'adPrices', 'effectiveCompanyCosts', 'effectiveFixedFee', 'tierRangeLabel',
-  'taxasDoAnuncio', 'freteDoAnuncio', 'freteNoPreco', 'feeSegments', 'segmentForPrice', 'calcSku'];
+  'taxasDoAnuncio', 'freteDoAnuncio', 'envioCombinarPct', 'fretePctNoPreco', 'freteNoPreco', 'feeSegments', 'segmentForPrice', 'calcSku'];
 const corpos = FUNCOES.map(extraiFuncao);
 
 // única troca: a v1 lê os custos da empresa de uma variável global (state.padroes); aqui eles

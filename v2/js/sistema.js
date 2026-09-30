@@ -155,7 +155,9 @@ function normalizeListing(l){
     try{ l.mlFreteFaixas = JSON.parse(txtF || '[]'); }catch(e){ l.mlFreteFaixas = []; }
   }
   if(!Array.isArray(l.mlFreteFaixas)) l.mlFreteFaixas = [];
-  l.mlFreteFaixas = l.mlFreteFaixas.map(f=>({min: Number(f.min)||0, custo: Number(f.custo)||0})).sort((a,b)=> a.min - b.min);
+  // "combinar": entrega a combinar com o comprador (o envio é um percentual do preço, ver envioCombinarPct)
+  l.mlFreteFaixas = l.mlFreteFaixas.map(f=> Object.assign({min: Number(f.min)||0, custo: Number(f.custo)||0},
+    toBool(f.combinar) ? {combinar: true} : {})).sort((a,b)=> a.min - b.min);
   // as faixas de taxa do Mercado Livre viajam como JSON numa célula da planilha
   if(typeof l.mlFaixas === 'string'){
     const txt = l.mlFaixas.trim().replace(/^'/, '');
@@ -658,7 +660,7 @@ const ROTULOS_CAMPO = {
   marketplace: {id:'ID', label:'Nome', color:'Cor', confidence:'Confiança', note:'Observação', commission:'Comissão %', ehMercadoLivre:'É o Mercado Livre',
     service:'Taxa de serviço %', transaction:'Taxa de transação %', fixedFee:'Taxa fixa', dualAdPrice:'Preço de anúncio duplo',
     variableFreight:'Frete por anúncio', variableFixedFee:'Taxa fixa por anúncio', tiered:'Cobra por faixa de preço', tiers:'Faixas de preço'},
-  padroes: {fixedCost:'Custo fixo', misc:'Outros custos', taxPct:'Imposto %', marketingPct:'Marketing %', coupon:'Cupom padrão', freightNet:'Frete padrão'}
+  padroes: {fixedCost:'Custo fixo', misc:'Outros custos', taxPct:'Imposto %', marketingPct:'Marketing %', coupon:'Cupom padrão', freightNet:'Frete padrão', envioCombinarPct:'Entrega a combinar (% do preço)'}
 };
 const CAMPOS_FORA_DO_HISTORICO = ['uid','idManual'];
 function rotuloCampo(tipo, k){ return (ROTULOS_CAMPO[tipo] || {})[k] || k; }
@@ -1120,6 +1122,9 @@ function normalizeProfile(p){
 function normalizePadroes(p){
   const out = {};
   ['fixedCost','misc','taxPct','marketingPct','coupon','freightNet'].forEach(k=> out[k] = Number(p[k])||0);
+  // entrega a combinar com o comprador: sem valor gravado, vale o padrão de 20% do preço
+  const c = p.envioCombinarPct;
+  out.envioCombinarPct = (c === undefined || c === null || String(c).trim() === '') ? 20 : (Number(c)||0);
   return out;
 }
 
@@ -1441,12 +1446,14 @@ function feeSegments(profile, sku){
   faixas.forEach(f=>{
     const label = tierRangeLabel(f.min, f.max);
     const custoEnvio = frete ? freteNoPreco(frete, Math.max(f.min, 0.01)) : 0;
+    // entrega a combinar: o envio é um percentual do preço, então entra junto com as taxas percentuais
+    const envioPct = frete ? fretePctNoPreco(frete, Math.max(f.min, 0.01)) : 0;
     const pctCheio = (f.rates.commission + f.rates.service + f.rates.transaction)/100;
     const svc = f.rates.service/100;
     const cap = f.rates.serviceCap;
     const limiar = (cap > 0 && svc > 0) ? cap/svc : Infinity;  // preço em que a taxa bate no teto
-    const semTeto = {min:f.min, max:Math.min(f.max, limiar), pct:pctCheio, fixed:f.rates.fixedFee + custoEnvio, frete:custoEnvio, rates:f.rates, label, capBinds:false};
-    const comTeto = {min:Math.max(f.min, limiar), max:f.max, pct:pctCheio - svc, fixed:f.rates.fixedFee + cap + custoEnvio, frete:custoEnvio, rates:f.rates, label, capBinds:true};
+    const semTeto = {min:f.min, max:Math.min(f.max, limiar), pct:pctCheio + envioPct/100, fixed:f.rates.fixedFee + custoEnvio, frete:custoEnvio, fretePct:envioPct, rates:f.rates, label, capBinds:false};
+    const comTeto = {min:Math.max(f.min, limiar), max:f.max, pct:pctCheio - svc + envioPct/100, fixed:f.rates.fixedFee + cap + custoEnvio, frete:custoEnvio, fretePct:envioPct, rates:f.rates, label, capBinds:true};
     if(semTeto.max > semTeto.min) segs.push(semTeto);
     if(limiar < f.max && comTeto.max > comTeto.min) segs.push(comTeto);
   });
@@ -1512,7 +1519,8 @@ function calcSku(profile, sku){
   const serviceVal = (rates.serviceCap > 0) ? Math.min(servicoCheio, rates.serviceCap) : servicoCheio;
   const transactionVal = rates.transaction/100*price;
   const fixedFee = rates.fixedFee;
-  const freteML = seg.frete || 0;   // envio informado pelo Mercado Livre para este anúncio
+  // envio informado pelo Mercado Livre para este anúncio (e, na entrega a combinar, o percentual do preço)
+  const freteML = (seg.frete || 0) + (seg.fretePct || 0)/100*price;
   const taxVal = tax*price, marketingVal = mk*price;
   const feesTotal = commissionVal+serviceVal+transactionVal+fixedFee+freteML;
   const netMarketplace = price - feesTotal - sku.coupon + sku.freightNet;
@@ -1524,7 +1532,7 @@ function calcSku(profile, sku){
     cogs:sku.cogs, fixedCost:cc.fixedCost, misc:cc.misc, taxVal, marketingVal, profit,
     marginPct: marginOnNet, marginOnNet, marginOnPrice,
     rates, tierLabel: seg.label, capBinds: seg.capBinds && servicoCheio > rates.serviceCap,
-    tiered: segs.length > 1};
+    tiered: segs.length > 1, fretePct: seg.fretePct || 0};
 }
 
 function renderTopDisclaimer(){
@@ -1975,7 +1983,7 @@ function renderReceiptPanel(){
     ${r.rates.service ? line('Taxa de serviço / envio ('+pct(r.rates.service)+(r.capBinds?', no teto':'')+')', -r.serviceVal, 'neg') : ''}
     ${r.rates.transaction ? line('Taxa de transação ('+pct(r.rates.transaction)+')', -r.transactionVal, 'neg') : ''}
     ${line(fixedFeeLabel, -r.fixedFee, r.fixedFee>0?'neg':'')}
-    ${r.freteML ? line('Envio, informado pelo Mercado Livre' + (lst.mlFreteGratis ? ' (frete grátis)' : ''), -r.freteML, 'neg') : ''}
+    ${r.freteML ? line(r.fretePct ? 'Envio a combinar (' + pct(r.fretePct) + ' do preço)' : 'Envio, informado pelo Mercado Livre' + (lst.mlFreteGratis ? ' (frete grátis)' : ''), -r.freteML, 'neg') : ''}
     <div class="divider"></div>
     ${line('Valor que sobra na sua mão', r.netMarketplace, 'pos')}
     <div class="rline section"><span class="lbl">Custos da empresa</span><span class="val"></span></div>
@@ -2861,7 +2869,21 @@ function taxasDoAnuncio(sku){
 // Custo do envio que o Mercado Livre informa para este anúncio, por faixa de preço.
 function freteDoAnuncio(sku){
   if(!sku || !sku.mlUsarFrete || !Array.isArray(sku.mlFreteFaixas) || !sku.mlFreteFaixas.length) return null;
-  return sku.mlFreteFaixas.map(f=>({min: Number(f.min)||0, custo: Number(f.custo)||0}));
+  return sku.mlFreteFaixas.map(f=> Object.assign({min: Number(f.min)||0, custo: Number(f.custo)||0}, f.combinar === true ? {combinar: true} : {}));
+}
+// Entrega "combinar com o comprador": o Mercado Livre não cobra envio, mas o vendedor paga o frete
+// que combinar. Para cobrir esse custo, o cálculo reserva um percentual do preço de venda: 20%, ou o
+// que a empresa definir na tela do Mercado Livre.
+function envioCombinarPct(){
+  const v = state.padroes.envioCombinarPct;
+  return (v === undefined || v === null) ? 20 : (Number(v) || 0);
+}
+// Percentual do preço reservado para o envio nesse preço (só nas faixas de entrega a combinar).
+function fretePctNoPreco(faixas, preco){
+  if(!faixas || !faixas.length) return 0;
+  let achado = faixas[0];
+  faixas.forEach(f=>{ if(preco >= f.min) achado = f; });
+  return achado.combinar ? envioCombinarPct() : 0;
 }
 function freteNoPreco(faixas, preco){
   if(!faixas || !faixas.length) return 0;
@@ -3053,7 +3075,9 @@ async function mlAtualizarTaxas(){
   mlEstado.carregando = false; mlEstado.mensagem = '';
   renderML(); renderProdutos();
   const todas = mudancas.concat(envio.mudancas);
+  const scriptSemCombinar = envio.erros && versaoScript !== null && versaoScript < 10;
   toast(`${comCategoria.length - erros} anúncio(s) com as taxas do Mercado Livre` + (envio.ok ? ` e ${envio.ok} com o custo de envio` : '') + '.'
+    + (scriptSemCombinar ? ' Anúncios com entrega a combinar precisam do Apps Script versão 10 (aba Sincronização).' : '')
     + (erros || envio.erros || semCategoria ? ` ${erros + envio.erros + semCategoria} sem resposta do ML.` : '')
     + (todas.length ? ` Preço mudou em ${new Set(todas.map(x=> x.split(':')[0])).size}: ${todas.slice(0, 3).join(' · ')}${todas.length > 3 ? '...' : ''}` : ' Nenhum preço mudou.'),
     (erros || envio.erros) ? 'warn' : 'ok', 'Taxas e envio atualizados');
@@ -3094,7 +3118,7 @@ async function mlAtualizarFrete(vinculados){
     const t = tabela[lst.mlItemId + (lst.mlVarId ? ':' + lst.mlVarId : '')];
     if(!t || t.erro || !t.faixas || !t.faixas.length){ erros++; return; }
     const antes = calcSku(profileOf(lst.marketplaceId), visaoDoAnuncio(prod, lst));
-    lst.mlFreteFaixas = t.faixas.map(f=>({min: Number(f.min)||0, custo: Number(f.custo)||0}));
+    lst.mlFreteFaixas = t.faixas.map(f=> Object.assign({min: Number(f.min)||0, custo: Number(f.custo)||0}, f.combinar ? {combinar: true} : {}));
     lst.mlFreteGratis = !!t.gratis;
     lst.mlLogistica = t.logistica || '';
     lst.mlFreteOutra = Number(t.outra) || 0;
@@ -3349,7 +3373,8 @@ function renderML(){
         const preco = r.error ? 0 : r.price;
         const faixa = (lst.mlFaixas || []).filter(f=> f.min <= preco).pop() || (lst.mlFaixas || [])[0] || {pct:0, fixo:0};
         const temFrete = (lst.mlFreteFaixas || []).length;
-        const envio = temFrete ? freteNoPreco(lst.mlFreteFaixas, preco) : null;
+        const pctCombinar = temFrete ? fretePctNoPreco(lst.mlFreteFaixas, preco) : 0;
+        const envio = temFrete ? freteNoPreco(lst.mlFreteFaixas, preco) + preco * pctCombinar / 100 : null;
         const conflito = lst.mlUsarFrete && lst.freightNet !== 0;
         return `<tr>
           <td class="cell-sku">${esc(lst.sku)}<span class="sub-val">${esc(prod.name)}</span></td>
@@ -3358,11 +3383,11 @@ function renderML(){
           <td class="num">${pct(faixa.pct)}</td>
           <td class="num">${brl(faixa.fixo)}</td>
           <td class="num">${envio === null ? '<span class="muted">--</span>' : brl(envio)}
-            <span class="sub-val">${lst.mlFreteGratis ? 'frete grátis' : 'envio por conta do comprador'}${lst.mlFreteOutra ? ' · na outra opção ' + brl(lst.mlFreteOutra) : ''}</span>
+            <span class="sub-val">${pctCombinar ? 'a combinar: ' + pct(pctCombinar) + ' do preço' : (lst.mlFreteGratis ? 'frete grátis' : 'envio por conta do comprador')}${lst.mlFreteOutra ? ' · na outra opção ' + brl(lst.mlFreteOutra) : ''}</span>
             ${conflito ? '<span class="sub-val neg">soma com o frete digitado neste anúncio</span>' : ''}</td>
           <td class="num">${mlConferencia(lst)}</td>
           <td class="muted">${(lst.mlFaixas || []).map(f=> `${f.min ? 'a partir de ' + brl(f.min) : 'até a próxima faixa'}: ${pct(f.pct)} + ${brl(f.fixo)}`).join('<br>')}
-            ${temFrete > 1 ? '<br><span class="muted">envio: ' + lst.mlFreteFaixas.map(f=> (f.min ? 'a partir de ' + brl(f.min) : 'até a próxima') + ': ' + brl(f.custo)).join('; ') + '</span>' : ''}</td>
+            ${temFrete > 1 ? '<br><span class="muted">envio: ' + lst.mlFreteFaixas.map(f=> (f.min ? 'a partir de ' + brl(f.min) : 'até a próxima') + ': ' + (f.combinar ? pct(envioCombinarPct()) + ' do preço' : brl(f.custo))).join('; ') + '</span>' : ''}</td>
           <td><label class="ml-uso"><input type="checkbox" data-mlusar="${esc(lst.id)}" ${lst.mlUsar ? 'checked' : ''}> taxas</label>
             <label class="ml-uso"><input type="checkbox" data-mlusarfrete="${esc(lst.id)}" ${lst.mlUsarFrete ? 'checked' : ''} ${temFrete ? '' : 'disabled'}> envio</label></td>
         </tr>`;
@@ -3399,6 +3424,8 @@ function renderML(){
     <div class="card">
       <h2>Taxas puxadas do Mercado Livre</h2>
       <p class="sub">Comissão, custo fixo e custo de envio por faixa de preço, como o Mercado Livre informa para cada anúncio &mdash; os mesmos números que aparecem em "A pagar" na sua lista de anúncios. Enquanto marcado em "Usar", o cálculo daquele anúncio ignora as taxas digitadas no cadastro do marketplace. O envio é consultado anúncio a anúncio, porque depende do peso e das dimensões, e vem pela opção de envio que o anúncio usa hoje.</p>
+      <div class="field"><label>Entrega a combinar com o comprador &mdash; % do preço de venda<span class="hint">Anúncios com "Combinar com o comprador" não têm envio calculado pelo Mercado Livre. O cálculo reserva este percentual do preço para cobrir o frete que você combina. Vale para toda a empresa.</span></label>
+        <input type="number" step="0.01" id="mlCombinarPct" value="${esc(envioCombinarPct())}"></div>
       <div class="form-actions" style="margin-top:0;">
         <button class="btn primary" id="mlTaxas" ${vinculados.length && st && st.conectado ? '' : 'disabled'}>Atualizar taxas e envio dos vinculados</button>
         <button class="btn" id="mlConferir" ${comTaxas.length && st && st.conectado ? '' : 'disabled'} title="Pergunta ao Mercado Livre a taxa e o envio no preço atual de cada anúncio e compara com o que o sistema calcula">Conferir tudo com o Mercado Livre</button>
@@ -3428,6 +3455,15 @@ function ligarML(){
   if(filtroConf) filtroConf.onchange = ()=>{ mlEstado.filtroConf = filtroConf.value; renderML(); };
   const urlAuth = q('mlUrlAuth');
   if(urlAuth) urlAuth.onclick = ()=> urlAuth.select();
+  const combinar = q('mlCombinarPct');
+  if(combinar){
+    combinar.addEventListener('input', ()=>{
+      state.padroes.envioCombinarPct = parseFloat(combinar.value) || 0;
+      saveState();
+      recalcularCatalogo();
+    });
+    combinar.addEventListener('change', ()=> renderML());
+  }
   const perfilSel = q('mlPerfil');
   if(perfilSel) perfilSel.onchange = ()=>{
     state.profiles.forEach(p=> p.ehMercadoLivre = (p.id === perfilSel.value));
