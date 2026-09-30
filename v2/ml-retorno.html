@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Mercado Livre — autorização</title>
+<!--
+  Página de retorno da autorização do Mercado Livre na v2, uma só para todas as empresas.
+  O Mercado Livre manda para cá o "code" e o "state" (assinado pelo servidor, com a empresa e a
+  pessoa que clicou em Conectar). A página só repassa os dois ao servidor, com o login de quem
+  está aqui; é o servidor que confere a assinatura e troca o código pela autorização.
+  Esta URL precisa estar cadastrada na aplicação do Mercado Livre, exatamente assim.
+-->
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/v2.css">
+</head>
+<body class="v2">
+<main class="v2-pagina">
+  <div class="card v2-login">
+    <h2>Mercado Livre</h2>
+    <p id="msg" class="sub">Concluindo a autorização...</p>
+    <div class="form-actions"><a class="btn" href="./" id="voltar" hidden>Voltar para o sistema</a></div>
+  </div>
+</main>
+<script type="module">
+import { chamarML, usuarioAtual, mensagemDeErro } from './js/banco.js';
+const $ = id => document.getElementById(id);
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function mostra(html, ok){ $('msg').innerHTML = html; $('msg').className = ok ? 'pos' : 'neg'; $('voltar').hidden = false; }
+const q = new URLSearchParams(location.search);
+// tira o código do endereço: ele só vale uma vez e não deve ficar no histórico do navegador
+history.replaceState(null, '', location.pathname);
+(async ()=>{
+  if(q.get('error')) return mostra('O Mercado Livre recusou a autorização: <b>' + esc(q.get('error')) + '</b>. ' + esc(q.get('error_description') || '') +
+    '<br>Na maioria das vezes é a URL de retorno cadastrada na aplicação do Mercado Livre, que precisa ser exatamente o endereço desta página.');
+  if(!q.get('code') || !q.get('state')) return mostra('Esta página só serve para receber a autorização do Mercado Livre. Volte ao sistema e clique em "Conectar ao Mercado Livre".');
+  if(!(await usuarioAtual())) return mostra('Entre no sistema neste mesmo navegador (com a conta que clicou em Conectar) e tente de novo.');
+  try{
+    const r = await chamarML({ ml: 'conectar', code: q.get('code'), state: q.get('state') });
+    mostra('Pronto! A empresa <b>' + esc(r.empresa) + '</b> está conectada na conta <b>' + esc(r.apelido) + '</b> do Mercado Livre. ' +
+      'Pode fechar esta aba e, no sistema, clicar em "Já autorizei".', true);
+  }catch(err){ mostra('Não deu certo: ' + esc(mensagemDeErro(err))); }
+})();
+</script>
+</body>
+</html>

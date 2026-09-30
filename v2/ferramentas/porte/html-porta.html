@@ -1,0 +1,55 @@
+
+<!-- Porta de entrada: login, senha própria no primeiro acesso e escolha da empresa (js/inicio.js). -->
+<div class="porta" id="porta">
+  <div class="porta-caixa">
+    <div class="brand porta-marca">
+      <div class="glyph">R$</div>
+      <div class="txt"><b>Precificação</b><span>por SKU e marketplace</span></div>
+    </div>
+
+    <section id="telaCarregando" class="card"><p class="sub" style="margin:0;" id="msgCarregando">Carregando...</p></section>
+
+    <section id="telaLogin" class="card" hidden>
+      <h2>Entrar</h2>
+      <form id="formLogin">
+        <div class="field textrow"><label for="email">E-mail</label><input type="email" id="email" autocomplete="username" required></div>
+        <div class="field textrow"><label for="senha">Senha</label><input type="password" id="senha" autocomplete="current-password" required></div>
+        <p class="neg" id="erroLogin"></p>
+        <div class="form-actions">
+          <button class="btn primary" type="submit" id="btnEntrar">Entrar</button>
+          <button class="btn" type="button" id="btnEsqueci">Esqueci a senha</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="telaSenha" class="card" hidden>
+      <h2>Crie a sua senha</h2>
+      <p class="sub">Você entrou com uma senha provisória. Crie uma senha só sua para continuar.</p>
+      <form id="formSenhaNova">
+        <input type="email" id="senhaNovaEmail" autocomplete="username" hidden>
+        <div class="field textrow"><label for="senhaNova1">Senha nova (mínimo 8 caracteres)</label><input type="password" id="senhaNova1" autocomplete="new-password" minlength="8" required></div>
+        <div class="field textrow"><label for="senhaNova2">Repita a senha nova</label><input type="password" id="senhaNova2" autocomplete="new-password" minlength="8" required></div>
+        <p class="neg" id="erroSenhaNova"></p>
+        <div class="form-actions">
+          <button class="btn primary" type="submit">Salvar senha</button>
+          <button class="btn" type="button" data-sair>Sair</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="telaEmpresas" hidden>
+      <div class="card">
+        <h2>Escolha a empresa</h2>
+        <p class="sub" id="subEmpresas"></p>
+        <div class="v2-empresas" id="listaEmpresas"></div>
+        <div class="form-actions">
+          <button class="btn" type="button" id="btnNovaEmpresa" hidden>Nova empresa</button>
+          <a class="btn" href="migrar.html" id="lnkMigrarPorta" hidden>Migração da versão 1</a>
+          <span class="grow"></span>
+          <span class="muted" id="quemPorta"></span>
+          <button class="btn" type="button" data-sair>Sair</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>

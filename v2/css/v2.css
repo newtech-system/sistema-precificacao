@@ -47,3 +47,34 @@ table.v2-equipe .acoes .btn + .btn{margin-left:6px;}
   table.v2-equipe .col-email, table.v2-equipe .col-acesso{display:none;}
 }
 .v2-aviso{border:1px dashed var(--line);border-radius:var(--r);padding:10px 14px;font-size:12.5px;color:var(--ink-2);margin-bottom:14px;}
+
+/* ---------- sistema (tela da v1 ligada ao banco) ---------- */
+/* Porta de entrada: cobre a tela até o login e a empresa estarem prontos. */
+.porta{position:fixed;inset:0;z-index:200;background:var(--bg);overflow:auto;padding:48px 16px;}
+.porta-caixa{max-width:560px;margin:0 auto;}
+.porta-caixa .card{margin-bottom:14px;}
+.porta-caixa h2{font-size:15px;margin:0 0 10px;}
+.porta-marca{padding:0 0 18px;}
+.porta .form-actions .grow{flex:1;}
+body.carregando{overflow:hidden;}
+.navlink{display:flex;align-items:center;gap:10px;color:var(--ink-2);font-size:13px;padding:9px 10px;
+  border-radius:var(--r-sm);text-decoration:none;margin-bottom:1px;}
+.navlink .ic{width:17px;height:17px;flex:none;opacity:.75;}
+.navlink:hover{background:var(--surface-2);color:var(--ink);}
+.empresa-atual{margin-top:9px;font-size:11.5px;line-height:1.5;color:var(--ink-2);}
+.empresa-atual b{color:var(--ink);font-weight:600;}
+.empresa-atual .btn{margin:4px 4px 0 0;}
+/* No celular a v1 esconde o rodapé da barra; aqui ele tem "Sair" e "Trocar": fica, compacto. */
+@media (max-width:900px){
+  .sidefoot{display:flex !important;align-items:center;gap:10px;margin:0;padding:6px 10px;border-top:none;white-space:nowrap;}
+  .sidefoot .hint, .sidefoot .userbtn{display:none;}
+  .empresa-atual{margin:0;}
+  .navlink{white-space:nowrap;margin:0;}
+}
+/* Somente consulta: some o que altera (e o que sobrar é desfeito com aviso). */
+.somente-leitura #newSkuBtn, .somente-leitura #loteBtn, .somente-leitura [data-del], .somente-leitura [data-edit],
+.somente-leitura #rc_edit, .somente-leitura .sel-prod, .somente-leitura #selTodos, .somente-leitura #newMktBtn,
+.somente-leitura [data-delmkt], .somente-leitura #importBtn, .somente-leitura #sheetActions option[value="import"],
+.somente-leitura #sheetActions option[value="unificar"]{display:none !important;}
+.somente-leitura #mktCards input, .somente-leitura #mktCards select, .somente-leitura #mktCards textarea,
+.somente-leitura #mktCards button, .somente-leitura #view-padroes .card:first-child input{pointer-events:none;}

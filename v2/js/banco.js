@@ -51,6 +51,12 @@ export async function ehAdmin(){
 export async function trocarMinhaSenha(senha){
   return checa(await sb.auth.updateUser({ password: senha, data: { trocar_senha: false } }));
 }
+// O nome que o banco grava em "alterado por": o da equipe, o da conta ou o e-mail (a mesma ordem
+// da função nome_de_quem no banco).
+export async function meuNome(u){
+  const r = checa(await sb.from('membros').select('nome').eq('user_id', u.id).not('nome', 'is', null).limit(1));
+  return (r[0] && r[0].nome) || (u.user_metadata && u.user_metadata.nome) || u.email;
+}
 // Nome que aparece no histórico ("alterado por"), em todas as empresas da pessoa.
 export async function alterarMeuNome(nome){
   checa(await sb.rpc('alterar_meu_nome', { p_nome: nome }));
@@ -98,26 +104,27 @@ export async function criarEmpresa(nome){
 }
 
 // Lê uma tabela inteira da empresa em páginas de mil linhas (o limite por consulta do banco).
-// Catálogo grande não trava a tela nem estoura o limite.
-async function tudoDaEmpresa(tabela, empresaId, colunas = '*', ordem = null){
+// Catálogo grande não trava a tela nem estoura o limite. A ordem pela chave é obrigatória: sem
+// ordem fixa, o banco pode devolver as páginas em ordens diferentes e repetir ou pular linhas.
+const CHAVE = { ml_vinculos: 'anuncio_id' };
+async function tudoDaEmpresa(tabela, empresaId, colunas = '*'){
   const PAGINA = 1000;
   const saida = [];
   for(let de = 0; ; de += PAGINA){
-    let q = sb.from(tabela).select(colunas).eq('empresa_id', empresaId).range(de, de + PAGINA - 1);
-    if(ordem) q = q.order(ordem);
-    const pagina = checa(await q);
+    const pagina = checa(await sb.from(tabela).select(colunas).eq('empresa_id', empresaId)
+      .order(CHAVE[tabela] || 'id').range(de, de + PAGINA - 1));
     saida.push(...pagina);
     if(pagina.length < PAGINA) break;
   }
   return saida;
 }
 
-// Tudo o que a tela de produtos precisa de uma empresa, em paralelo.
+// Tudo de uma empresa, em paralelo (inclusive marketplaces removidos, dos anúncios órfãos).
 export async function carregarEmpresa(empresaId){
   const [empresas, marketplaces, produtos, anuncios, vinculos] = await Promise.all([
     sb.from('empresas').select('*').eq('id', empresaId).then(checa),
-    tudoDaEmpresa('marketplaces', empresaId, '*', 'ordem'),
-    tudoDaEmpresa('produtos', empresaId, '*', 'sku'),
+    tudoDaEmpresa('marketplaces', empresaId),
+    tudoDaEmpresa('produtos', empresaId),
     tudoDaEmpresa('anuncios', empresaId),
     tudoDaEmpresa('ml_vinculos', empresaId)
   ]);
@@ -125,31 +132,60 @@ export async function carregarEmpresa(empresaId){
   return { empresa: empresas[0], marketplaces, produtos, anuncios, vinculos };
 }
 
-// ---------------------------------------------------------------- tradução para o motor de cálculo
-// O motor de cálculo é o MESMO da versão 1 (calculo.js é gerado a partir dela), e fala a
-// língua da v1. Estas funções traduzem as linhas do banco para esse formato.
-export function custosDaEmpresaV1(e){
-  return { fixedCost: Number(e.custo_fixo), misc: Number(e.outros_custos), taxPct: Number(e.imposto_pct),
-    marketingPct: Number(e.marketing_pct), coupon: Number(e.cupom_padrao), freightNet: Number(e.frete_padrao) };
+// Só algumas linhas, pelo id (o que outra pessoa acabou de mudar). Em blocos de 150 ids para a
+// consulta não passar do tamanho de endereço que o servidor aceita.
+export async function lerPorIds(tabela, ids){
+  const saida = [];
+  for(let i = 0; i < ids.length; i += 150){
+    saida.push(...checa(await sb.from(tabela).select('*').in(CHAVE[tabela] || 'id', ids.slice(i, i + 150))));
+  }
+  return saida;
 }
-export function perfilV1(m){
-  return { id: m.codigo, label: m.nome, color: m.cor, missing: !!m.removido,
-    commission: Number(m.comissao), service: Number(m.servico), transaction: Number(m.transacao), fixedFee: Number(m.taxa_fixa),
-    dualAdPrice: m.preco_anuncio_duplo, variableFreight: m.frete_variavel, variableFixedFee: m.taxa_fixa_variavel,
-    tiered: m.por_faixa, tiers: Array.isArray(m.faixas) ? m.faixas : [] };
+export async function lerEmpresa(empresaId){
+  const r = checa(await sb.from('empresas').select('*').eq('id', empresaId));
+  return r[0] || null;
 }
-export function visaoV1(produto, anuncio, vinculo){
-  const v = vinculo || null;
-  return {
-    id: anuncio.id, productId: produto.id, productSku: produto.sku, sku: anuncio.sku, name: produto.nome,
-    cogs: Number(produto.custo), costOverride: produto.custo_proprio,
-    fixedCost: Number(produto.custo_fixo), misc: Number(produto.outros_custos),
-    taxPct: Number(produto.imposto_pct), marketingPct: Number(produto.marketing_pct),
-    coupon: Number(anuncio.cupom), freightNet: Number(anuncio.frete_liquido), mktFixedFee: Number(anuncio.taxa_fixa_anuncio),
-    mode: anuncio.modo === 'margem' ? 'margin' : 'price', price: Number(anuncio.preco), marginTarget: Number(anuncio.margem_alvo),
-    mlUsar: v ? v.usar_taxas : false, mlFaixas: v ? v.faixas_taxa : [],
-    mlUsarFrete: v ? v.usar_envio : false, mlFreteFaixas: v ? v.faixas_envio : [], mlFreteGratis: v ? v.frete_gratis : false
-  };
+
+// Grava um lote de alterações (ver a função "salvar" no banco). Devolve uma resposta por operação.
+export async function salvarLote(empresaId, ops){
+  return checa(await sb.rpc('salvar', { p_empresa: empresaId, p_ops: ops }));
+}
+export async function avisarRecarregar(empresaId){
+  checa(await sb.rpc('avisar_recarregar', { p_empresa: empresaId }));
+}
+
+// Canal da empresa: cada gravação de qualquer pessoa manda UM aviso com a lista do que mudou.
+// quandoMudar(payload) recebe {mudou:[{t,id,v}]} ou {recarregar:true}; quandoStatus(status) recebe
+// 'SUBSCRIBED', 'CHANNEL_ERROR', 'TIMED_OUT' ou 'CLOSED'.
+export async function abrirCanal(empresaId, quandoMudar, quandoStatus){
+  await sb.realtime.setAuth();
+  const canal = sb.channel('precificacao:' + empresaId, { config: { private: true } })
+    .on('broadcast', { event: 'mudou' }, (m)=> quandoMudar(m.payload || {}))
+    .subscribe((status)=> quandoStatus && quandoStatus(status));
+  return ()=> sb.removeChannel(canal);
+}
+// A sessão renova o token de tempos em tempos; o canal precisa do novo para não cair.
+sb.auth.onAuthStateChange((evento, sessao)=>{
+  if(evento === 'TOKEN_REFRESHED' && sessao) sb.realtime.setAuth(sessao.access_token);
+});
+
+// Histórico de alterações da empresa, do mais novo para o mais antigo, em páginas.
+export async function listarHistorico(empresaId, { antesDoId = null, limite = 200 } = {}){
+  let q = sb.from('historico').select('id, tabela, registro_id, acao, quem_nome, quando, antes, depois')
+    .eq('empresa_id', empresaId).order('id', { ascending: false }).limit(limite);
+  if(antesDoId) q = q.lt('id', antesDoId);
+  return checa(await q);
+}
+
+// ---------------------------------------------------------------- Mercado Livre (Edge Function)
+export async function chamarML(corpo){
+  const { data, error } = await sb.functions.invoke('precificacao-ml', { body: corpo });
+  if(error){
+    let m = error.message;
+    try{ const j = await error.context.json(); if(j && j.erro) m = j.erro; }catch(_){ /* resposta sem corpo */ }
+    throw new Error(mensagemDeErro({ message: m }));
+  }
+  return data;
 }
 
 // ---------------------------------------------------------------- importação da v1 (só administrador)

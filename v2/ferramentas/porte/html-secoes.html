@@ -1,0 +1,68 @@
+    <section id="view-historico" class="view">
+      <div class="card">
+        <h2>Situação</h2>
+        <p class="sub" id="syncStatusDetail"></p>
+      </div>
+
+      <div class="card" id="conflitosCard" style="display:none;">
+        <h2>Conflitos juntados</h2>
+        <p class="sub">Itens que você e outra pessoa alteraram ao mesmo tempo. Nada foi descartado: nos campos que os dois mudaram ficou o seu valor, e aqui dá para trocar pelo da outra pessoa.</p>
+        <div id="conflitosLista"></div>
+        <div class="form-actions"><button class="btn small" id="conflitosLimpar">Marcar todos como vistos</button></div>
+      </div>
+
+      <div class="card">
+        <h2>Histórico de alterações</h2>
+        <p class="sub" id="historicoAviso"></p>
+        <input type="text" id="historicoBusca" placeholder="Filtrar por nome, SKU, campo..." style="width:100%;text-align:left;margin:0 0 10px;">
+        <div class="hist-wrap" id="historicoLista"></div>
+      </div>
+    </section>
+
+    <section id="view-equipe" class="view">
+      <div class="v2-grade2">
+        <div class="card">
+          <h2>Incluir pessoa</h2>
+          <form id="formIncluir" autocomplete="off">
+            <div class="field textrow"><label for="novoNome">Nome</label><input type="text" id="novoNome" maxlength="80" required></div>
+            <div class="field textrow"><label for="novoEmail">E-mail</label><input type="email" id="novoEmail" maxlength="254" required></div>
+            <div class="field textrow"><label for="novoPapel">Papel</label>
+              <select id="novoPapel">
+                <option value="editor" selected>Editor</option>
+                <option value="leitor">Leitor</option>
+                <option value="dono">Dono</option>
+              </select></div>
+            <p class="neg" id="erroIncluir"></p>
+            <div class="form-actions"><button class="btn primary" type="submit" id="btnIncluir">Incluir</button></div>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Papéis</h2>
+          <ul class="v2-papeis">
+            <li><b>Dono</b> — tudo, inclusive incluir e tirar pessoas e gerar senha nova.</li>
+            <li><b>Editor</b> — altera produtos, preços, marketplaces, custos e o Mercado Livre.</li>
+            <li><b>Leitor</b> — só consulta.</li>
+          </ul>
+          <p class="sub">Quem ainda não tem conta recebe uma senha provisória, que aparece uma vez só aqui. No primeiro acesso o sistema pede para a pessoa criar a senha dela.</p>
+          <p class="sub">Se a pessoa já tem conta (trabalha em outra empresa), ela entra com a senha que já usa.</p>
+        </div>
+      </div>
+      <div id="credencial"></div>
+      <div class="card flat" style="margin-top:14px;"><div class="tablewrap" id="tabelaEquipe"></div></div>
+    </section>
+
+    <section id="view-conta" class="view">
+      <div class="card" style="max-width:520px;">
+        <form id="formNome" autocomplete="off">
+          <div class="field textrow"><label for="meuNome">Seu nome<span class="hint">É o que aparece no histórico e nos avisos, em "quem mudou".</span></label><input type="text" id="meuNome" maxlength="80" required></div>
+          <div class="form-actions"><button class="btn" type="submit">Salvar nome</button></div>
+        </form>
+        <form id="formSenha" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line-soft);">
+          <input type="email" id="contaEmail" autocomplete="username" hidden>
+          <div class="field textrow"><label for="senhaNova">Senha nova (mínimo 8 caracteres)</label><input type="password" id="senhaNova" autocomplete="new-password" minlength="8" required></div>
+          <div class="field textrow"><label for="senhaRepete">Repita a senha nova</label><input type="password" id="senhaRepete" autocomplete="new-password" minlength="8" required></div>
+          <div class="form-actions"><button class="btn primary" type="submit">Salvar senha</button></div>
+        </form>
+        <p id="msgConta"></p>
+      </div>
+    </section>
