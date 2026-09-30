@@ -2885,12 +2885,22 @@ async function mlChamar(params){
   if(!d || d.ok === undefined) throw new Error('O servidor da integração respondeu sem entender o pedido.');
   return d;
 }
-async function mlAtualizarStatus(mostrarErro){
+// avisar = a pessoa clicou (Verificar de novo / Já autorizei): diz o que encontrou, para o clique
+// nunca parecer "sem efeito" quando a resposta é a mesma de antes.
+async function mlAtualizarStatus(avisar){
+  const botoes = [...document.querySelectorAll('#mlRecarregarStatus, #mlJaAutorizei')];
+  botoes.forEach(b=>{ b.disabled = true; b.dataset.texto = b.textContent; b.textContent = 'Verificando...'; });
   try{
     mlEstado.status = await mlChamar('ml=status');
+    const s = mlEstado.status;
+    if(avisar){
+      if(!s.configurado) toast('O servidor ainda não tem ' + (s.faltando || []).join(' e ') + '. Cadastre em Supabase → Edge Functions → Secrets e clique em "Verificar de novo".', 'warn', 'Mercado Livre');
+      else if(s.conectado) toast('Conectado na conta ' + (s.apelido || s.userId) + '.', 'ok', 'Mercado Livre');
+      else toast('Aplicação configurada. Agora clique em "Conectar ao Mercado Livre".', 'ok', 'Mercado Livre');
+    }
   }catch(err){
     mlEstado.status = null;
-    if(mostrarErro) toast(err.message, 'err', 'Mercado Livre');
+    if(avisar) toast(err.message, 'err', 'Mercado Livre');
   }
   renderML();
 }
@@ -3273,7 +3283,12 @@ function renderML(){
     ? `<p class="sub">Não consegui falar com o servidor da integração agora.</p>
        <div class="form-actions"><button class="btn" id="mlRecarregarStatus">Tentar de novo</button></div>`
     : !st.configurado
-    ? `<p class="sub">A integração ainda não foi configurada no servidor: falta cadastrar a aplicação do Mercado Livre (Client ID e Client Secret). É o administrador quem faz, uma vez só, e vale para todas as empresas.</p>
+    ? `<p class="sub">A integração ainda não foi configurada no servidor: falta cadastrar a aplicação do Mercado Livre. É o administrador quem faz, uma vez só, e vale para todas as empresas.</p>
+       <ol class="steps" style="margin-top:8px;">
+         <li>No Supabase, abra <b>Edge Functions → Secrets</b> e cadastre ${(st.faltando || ['ML_CLIENT_ID', 'ML_CLIENT_SECRET']).map(n=> '<code>' + esc(n) + '</code>').join(' e ')}, com o Client ID e o Client Secret da aplicação do Mercado Livre (o nome tem que ser exatamente esse).</li>
+         <li>Na aplicação do Mercado Livre, cadastre a URL de retorno <code>${esc(st.redirect || '')}</code>.</li>
+         <li>Clique em "Verificar de novo".</li>
+       </ol>
        <div class="form-actions"><button class="btn" id="mlRecarregarStatus">Verificar de novo</button></div>`
     : `
       <div class="form-actions">

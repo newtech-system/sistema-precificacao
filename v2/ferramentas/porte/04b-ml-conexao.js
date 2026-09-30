@@ -4,7 +4,12 @@
     ? `<p class="sub">Não consegui falar com o servidor da integração agora.</p>
        <div class="form-actions"><button class="btn" id="mlRecarregarStatus">Tentar de novo</button></div>`
     : !st.configurado
-    ? `<p class="sub">A integração ainda não foi configurada no servidor: falta cadastrar a aplicação do Mercado Livre (Client ID e Client Secret). É o administrador quem faz, uma vez só, e vale para todas as empresas.</p>
+    ? `<p class="sub">A integração ainda não foi configurada no servidor: falta cadastrar a aplicação do Mercado Livre. É o administrador quem faz, uma vez só, e vale para todas as empresas.</p>
+       <ol class="steps" style="margin-top:8px;">
+         <li>No Supabase, abra <b>Edge Functions → Secrets</b> e cadastre ${(st.faltando || ['ML_CLIENT_ID', 'ML_CLIENT_SECRET']).map(n=> '<code>' + esc(n) + '</code>').join(' e ')}, com o Client ID e o Client Secret da aplicação do Mercado Livre (o nome tem que ser exatamente esse).</li>
+         <li>Na aplicação do Mercado Livre, cadastre a URL de retorno <code>${esc(st.redirect || '')}</code>.</li>
+         <li>Clique em "Verificar de novo".</li>
+       </ol>
        <div class="form-actions"><button class="btn" id="mlRecarregarStatus">Verificar de novo</button></div>`
     : `
       <div class="form-actions">

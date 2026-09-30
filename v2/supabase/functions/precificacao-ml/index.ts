@@ -23,9 +23,14 @@ const ML_SONDAS = [5, 8, 12.49, 12.5, 20, 28.99, 29, 40, 49.99, 50, 65, 78.99, 7
 const ML_SONDAS_FRETE = [10, 28.99, 29, 49.99, 50, 78.99, 79, 150, 400];
 const ORCAMENTO_MS = 20000;   // cada chamada devolve o que deu em 20 s; o resto vem em "faltou"
 
-const CLIENT_ID = (Deno.env.get('ML_CLIENT_ID') ?? '').trim();
-const CLIENT_SECRET = (Deno.env.get('ML_CLIENT_SECRET') ?? '').trim();
-const REDIRECT = (Deno.env.get('ML_REDIRECT_URI') ?? 'https://newtech-system.github.io/sistema-precificacao/v2/ml-retorno.html').trim();
+// Lidos a cada pedido (e não uma vez ao carregar): um segredo cadastrado agora vale no próximo
+// clique, mesmo que o servidor já estivesse rodando.
+let CLIENT_ID = '', CLIENT_SECRET = '', REDIRECT = '';
+function lerSegredos(){
+  CLIENT_ID = (Deno.env.get('ML_CLIENT_ID') ?? '').trim();
+  CLIENT_SECRET = (Deno.env.get('ML_CLIENT_SECRET') ?? '').trim();
+  REDIRECT = (Deno.env.get('ML_REDIRECT_URI') ?? '').trim() || 'https://newtech-system.github.io/sistema-precificacao/v2/ml-retorno.html';
+}
 
 function chaveSecreta(): string {
   const novas = Deno.env.get('SUPABASE_SECRET_KEYS');
@@ -445,7 +450,10 @@ Deno.serve(async (req) => {
     const user = quem.user.id;
     const c = await req.json().catch(() => ({}));
     const acao = String(c.ml || '');
+    lerSegredos();
     const configurado = !!CLIENT_ID && !!CLIENT_SECRET;
+    // só o NOME do que falta, nunca o valor
+    const faltando = [!CLIENT_ID && 'ML_CLIENT_ID', !CLIENT_SECRET && 'ML_CLIENT_SECRET'].filter(Boolean);
 
     // volta da autorização (página ml-retorno.html): a empresa vem no "state" assinado
     if (acao === 'conectar') {
@@ -471,8 +479,8 @@ Deno.serve(async (req) => {
 
     if (acao === 'status') {
       const cx = await conexao(empresa);
-      return resposta(200, { ok: true, configurado, conectado: !!(cx && cx.refresh_token), apelido: (cx && cx.apelido) || '',
-        userId: (cx && cx.ml_user_id) || '' });
+      return resposta(200, { ok: true, configurado, faltando, redirect: REDIRECT, conectado: !!(cx && cx.refresh_token),
+        apelido: (cx && cx.apelido) || '', userId: (cx && cx.ml_user_id) || '' });
     }
     if (!podeEditar(papel)) throw new Recusa(403, 'Seu acesso a esta empresa é só de consulta.');
     if (!configurado) throw new Recusa(400, 'A aplicação do Mercado Livre não está configurada no servidor.');

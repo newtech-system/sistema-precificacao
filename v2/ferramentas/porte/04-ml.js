@@ -13,12 +13,22 @@ async function mlChamar(params){
   if(!d || d.ok === undefined) throw new Error('O servidor da integração respondeu sem entender o pedido.');
   return d;
 }
-async function mlAtualizarStatus(mostrarErro){
+// avisar = a pessoa clicou (Verificar de novo / Já autorizei): diz o que encontrou, para o clique
+// nunca parecer "sem efeito" quando a resposta é a mesma de antes.
+async function mlAtualizarStatus(avisar){
+  const botoes = [...document.querySelectorAll('#mlRecarregarStatus, #mlJaAutorizei')];
+  botoes.forEach(b=>{ b.disabled = true; b.dataset.texto = b.textContent; b.textContent = 'Verificando...'; });
   try{
     mlEstado.status = await mlChamar('ml=status');
+    const s = mlEstado.status;
+    if(avisar){
+      if(!s.configurado) toast('O servidor ainda não tem ' + (s.faltando || []).join(' e ') + '. Cadastre em Supabase → Edge Functions → Secrets e clique em "Verificar de novo".', 'warn', 'Mercado Livre');
+      else if(s.conectado) toast('Conectado na conta ' + (s.apelido || s.userId) + '.', 'ok', 'Mercado Livre');
+      else toast('Aplicação configurada. Agora clique em "Conectar ao Mercado Livre".', 'ok', 'Mercado Livre');
+    }
   }catch(err){
     mlEstado.status = null;
-    if(mostrarErro) toast(err.message, 'err', 'Mercado Livre');
+    if(avisar) toast(err.message, 'err', 'Mercado Livre');
   }
   renderML();
 }
