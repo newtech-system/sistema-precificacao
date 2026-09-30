@@ -5330,6 +5330,8 @@ function mlToken() {
 function mlGet(url, tentou) {
   var r = UrlFetchApp.fetch(url, {muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + mlToken()}});
   if (r.getResponseCode() === 401 && !tentou) { mlRenovar(); return mlGet(url, true); }
+  // 429 = consultas demais em pouco tempo; espera e tenta mais uma vez
+  if (r.getResponseCode() === 429 && !tentou) { Utilities.sleep(3000); return mlGet(url, true); }
   var txt = r.getContentText();
   if (r.getResponseCode() >= 400) {
     var m = '';
@@ -5384,6 +5386,18 @@ function mlFaixasDasAmostras(amostras) {
 // referência do que aconteceria se você mudasse.
 var ML_SONDAS_FRETE = [10, 40, 78.99, 79, 150, 400];
 
+// Refaz em bloco as consultas que voltaram com 429 (consultas demais em pouco tempo).
+function mlFetchAll(pedidos) {
+  var rs = UrlFetchApp.fetchAll(pedidos);
+  var refazer = [];
+  rs.forEach(function (r, i) { if (r.getResponseCode() === 429) refazer.push(i); });
+  if (!refazer.length) return rs;
+  Utilities.sleep(3000);
+  var segunda = UrlFetchApp.fetchAll(refazer.map(function (i) { return pedidos[i]; }));
+  refazer.forEach(function (i, k) { rs[i] = segunda[k]; });
+  return rs;
+}
+
 function mlCustoDoEnvio(r) {
   if (!r || r.getResponseCode() >= 400) return null;
   var d = JSON.parse(r.getContentText());
@@ -5419,7 +5433,7 @@ function mlFrete(lista) {
       });
       pedidos.push({url: base + '&item_price=' + (Number(it.price) || 0) + '&free_shipping=' + (gratis ? 'false' : 'true'),
         muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + token}});
-      var rs = UrlFetchApp.fetchAll(pedidos);
+      var rs = mlFetchAll(pedidos);
       var faixas = [];
       for (var i = 0; i < ML_SONDAS_FRETE.length; i++) {
         var custo = mlCustoDoEnvio(rs[i]);
@@ -5500,7 +5514,7 @@ function mlTaxas(chaves) {
           '&category_id=' + encodeURIComponent(categoria) + '&listing_type_id=' + encodeURIComponent(tipo),
           muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + token}};
       });
-      var respostas = UrlFetchApp.fetchAll(pedidos);
+      var respostas = mlFetchAll(pedidos);
       var amostras = [];
       respostas.forEach(function (r, i) {
         if (r.getResponseCode() >= 400) return;
