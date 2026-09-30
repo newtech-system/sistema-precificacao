@@ -19,7 +19,11 @@ export function mensagemDeErro(err){
   if(/Email not confirmed/i.test(m)) return 'E-mail ainda não confirmado. Veja a caixa de entrada.';
   if(/schema must be one of|Invalid schema|PGRST106/i.test(m))
     return 'O banco ainda não libera o compartimento "precificacao" para o sistema. No painel do Supabase: Project Settings → API (Data API) → Exposed schemas → acrescente "precificacao" e salve.';
-  if(/Failed to fetch|NetworkError|Load failed/i.test(m)) return 'Sem conexão com o banco agora. Tente de novo em instantes.';
+  if(/Failed to fetch|NetworkError|Load failed|Failed to send a request/i.test(m)) return 'Sem conexão com o banco agora. Tente de novo em instantes.';
+  if(/should be different from the old password/i.test(m)) return 'A senha nova precisa ser diferente da atual.';
+  const curta = m.match(/Password should be at least (\d+)/i);
+  if(curta) return `A senha precisa ter pelo menos ${curta[1]} caracteres.`;
+  if(/weak|pwned|leaked/i.test(m)) return 'Senha fraca demais ou já vazada na internet. Escolha outra.';
   if(/row-level security|permission denied/i.test(m)) return 'Seu usuário não tem permissão para isso nesta empresa.';
   return m;
 }
@@ -43,8 +47,46 @@ export async function ehAdmin(){
   const linhas = checa(await sb.from('administradores').select('user_id').eq('user_id', u.id));
   return linhas.length > 0;
 }
-export async function redefinirSenha(email){
-  return checa(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.href.split('#')[0] }));
+// Senha própria no lugar da provisória (ou troca normal). Desliga o aviso de "troque a senha".
+export async function trocarMinhaSenha(senha){
+  return checa(await sb.auth.updateUser({ password: senha, data: { trocar_senha: false } }));
+}
+// Nome que aparece no histórico ("alterado por"), em todas as empresas da pessoa.
+export async function alterarMeuNome(nome){
+  checa(await sb.rpc('alterar_meu_nome', { p_nome: nome }));
+  checa(await sb.auth.updateUser({ data: { nome } }));
+}
+
+// ---------------------------------------------------------------- equipe
+// Criar conta e gerar senha provisória exigem a chave secreta: vão pela Edge Function.
+// O resto são funções do banco que conferem a permissão e registram no histórico.
+async function chamarEquipe(corpo){
+  const { data, error } = await sb.functions.invoke('precificacao-equipe', { body: corpo });
+  if(error){
+    let m = error.message;
+    try{ const j = await error.context.json(); if(j && j.erro) m = j.erro; }catch(_){ /* resposta sem corpo */ }
+    throw new Error(mensagemDeErro({ message: m }));
+  }
+  return data;
+}
+export function incluirNaEquipe(empresaId, { nome, email, papel }){
+  return chamarEquipe({ acao: 'incluir', empresa_id: empresaId, nome, email, papel });
+}
+export function gerarSenhaProvisoria(userId){
+  return chamarEquipe({ acao: 'redefinir_senha', user_id: userId });
+}
+// 'admin' (administrador geral), 'dono', 'editor', 'leitor' ou null (sem acesso)
+export async function meuPapel(empresaId){
+  return checa(await sb.rpc('meu_papel', { p_empresa: empresaId }));
+}
+export async function listarEquipe(empresaId){
+  return checa(await sb.rpc('equipe', { p_empresa: empresaId }));
+}
+export async function alterarPapel(empresaId, userId, papel){
+  checa(await sb.rpc('alterar_papel', { p_empresa: empresaId, p_user: userId, p_papel: papel }));
+}
+export async function removerDaEquipe(empresaId, userId){
+  checa(await sb.rpc('remover_da_equipe', { p_empresa: empresaId, p_user: userId }));
 }
 
 // ---------------------------------------------------------------- empresas

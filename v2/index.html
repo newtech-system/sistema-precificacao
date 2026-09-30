@@ -18,8 +18,10 @@
       <p class="sub" id="subtitulo">Em construção. A versão atual continua sendo a oficial.</p></div>
     <span class="grow"></span>
     <a class="btn small" id="lnkMigrar" href="migrar.html" hidden>Migração</a>
+    <button class="btn small" id="btnEquipe" type="button" hidden>Equipe</button>
     <button class="btn small" id="btnTrocar" type="button" hidden>Trocar de empresa</button>
     <span class="muted" id="quem"></span>
+    <button class="btn small" id="btnConta" type="button" hidden>Minha conta</button>
     <button class="btn small" id="btnSair" type="button" hidden>Sair</button>
   </header>
 
@@ -47,6 +49,58 @@
     <div class="v2-aviso">Somente leitura por enquanto: os preços são calculados pelo mesmo motor da versão 1. A edição chega nas próximas etapas.</div>
     <div class="metrics" id="metricas"></div>
     <div class="card flat"><div class="tablewrap" id="tabela"></div></div>
+  </section>
+
+  <section id="telaEquipe" hidden>
+    <div class="form-actions" style="margin:0 0 12px;">
+      <button class="btn" id="btnVoltarProdutos" type="button">&larr; Voltar aos produtos</button>
+    </div>
+    <div class="v2-grade2">
+      <div class="card">
+        <h2>Incluir pessoa</h2>
+        <form id="formIncluir" autocomplete="off">
+          <div class="field textrow"><label for="novoNome">Nome</label><input type="text" id="novoNome" maxlength="80" required></div>
+          <div class="field textrow"><label for="novoEmail">E-mail</label><input type="email" id="novoEmail" maxlength="254" required></div>
+          <div class="field textrow"><label for="novoPapel">Papel</label>
+            <select id="novoPapel">
+              <option value="editor" selected>Editor</option>
+              <option value="leitor">Leitor</option>
+              <option value="dono">Dono</option>
+            </select></div>
+          <p class="neg" id="erroIncluir"></p>
+          <div class="form-actions"><button class="btn primary" type="submit" id="btnIncluir">Incluir</button></div>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Papéis</h2>
+        <ul class="v2-papeis">
+          <li><b>Dono</b> — tudo, inclusive incluir e tirar pessoas e gerar senha nova.</li>
+          <li><b>Editor</b> — altera produtos, preços, marketplaces e custos da empresa.</li>
+          <li><b>Leitor</b> — só consulta.</li>
+        </ul>
+        <p class="sub">Quem ainda não tem conta recebe uma senha provisória, que aparece uma vez só aqui. No primeiro acesso o sistema pede para a pessoa criar a senha dela.</p>
+        <p class="sub">Se a pessoa já tem conta (trabalha em outra empresa), ela entra com a senha que já usa.</p>
+      </div>
+    </div>
+    <div id="credencial"></div>
+    <div class="card flat" style="margin-top:14px;"><div class="tablewrap" id="tabelaEquipe"></div></div>
+  </section>
+
+  <section id="telaConta" class="card v2-login" hidden>
+    <h2 id="tituloConta">Minha conta</h2>
+    <p class="sub" id="avisoConta"></p>
+    <form id="formNome" autocomplete="off">
+      <div class="field textrow"><label for="meuNome">Seu nome (aparece no histórico de alterações)</label><input type="text" id="meuNome" maxlength="80" required></div>
+      <div class="form-actions"><button class="btn" type="submit">Salvar nome</button></div>
+    </form>
+    <form id="formSenha">
+      <input type="email" id="contaEmail" autocomplete="username" hidden>
+      <div class="field textrow"><label for="senhaNova">Senha nova (mínimo 8 caracteres)</label><input type="password" id="senhaNova" autocomplete="new-password" minlength="8" required></div>
+      <div class="field textrow"><label for="senhaRepete">Repita a senha nova</label><input type="password" id="senhaRepete" autocomplete="new-password" minlength="8" required></div>
+      <div class="form-actions"><button class="btn primary" type="submit">Salvar senha</button></div>
+    </form>
+    <p id="msgConta"></p>
+    <div class="form-actions" id="rodapeConta"><button class="btn" type="button" id="btnVoltarConta">&larr; Voltar</button></div>
   </section>
 </main>
 <script type="module" src="js/app.js"></script>
