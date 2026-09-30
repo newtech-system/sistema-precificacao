@@ -5453,10 +5453,14 @@ function mlItens(offset, limit) {
   var ids = busca.results || [];
   var total = (busca.paging && busca.paging.total) || ids.length;
   if (!ids.length) return {ok:true, total: total, itens: [], offset: offset};
-  var dados = mlGet(ML_API + '/items?ids=' + ids.join(',') +
-    '&attributes=id,title,price,status,category_id,listing_type_id,seller_custom_field,permalink,attributes,variations');
+  // a consulta de detalhes do Mercado Livre aceita no máximo 20 anúncios por vez
+  var dados = [];
+  for (var i = 0; i < ids.length; i += 20) {
+    dados = dados.concat(mlGet(ML_API + '/items?ids=' + ids.slice(i, i + 20).join(',') +
+      '&attributes=id,title,price,status,category_id,listing_type_id,seller_custom_field,permalink,attributes,variations') || []);
+  }
   var itens = [];
-  (dados || []).forEach(function (linha) {
+  dados.forEach(function (linha) {
     var it = linha && (linha.body || linha);
     if (!it || !it.id) return;
     var skuPai = it.seller_custom_field || mlAtributo(it.attributes, 'SELLER_SKU') || '';
