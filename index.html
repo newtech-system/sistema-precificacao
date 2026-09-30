@@ -3750,6 +3750,7 @@ function renderML(){
         <li>Em <b>URI de redirect</b>, cole exatamente a URL de retorno acima (a do Apps Script).</li>
         <li>Deixe marcadas as permissões de <b>leitura</b> e o <b>offline_access</b> &mdash; sem o offline_access a autorização vence em 6 horas e você teria que reconectar toda hora.</li>
         <li>Copie o <b>Client ID</b> e o <b>Client Secret</b> para os campos acima e clique em Guardar aplicação.</li>
+        <li>No <b>Apps Script da planilha</b>, escolha a função <code>autorizarPermissoes</code> na lista e clique em <b>Executar</b>, autorizando o acesso a serviços externos. Sem isso o Google bloqueia a conversa com o Mercado Livre (erro "não tem permissão para chamar UrlFetchApp.fetch"). Depois publique uma <b>nova versão</b> da implantação.</li>
       </ol>`;
 
   const escolhaMkt = `<div class="field"><label>Qual marketplace deste sistema é o Mercado Livre<span class="hint">É nele que os vínculos e as taxas entram.</span></label>
@@ -5149,8 +5150,29 @@ var ML_SONDAS = [5, 8, 12.49, 12.5, 20, 28.99, 29, 40, 49.99, 50, 65, 78.99, 79,
 
 function mlProps() { return PropertiesService.getScriptProperties(); }
 
+// RODE ESTA FUNÇÃO UMA VEZ no editor do Apps Script (escolha "autorizarPermissoes" na lista de
+// funções e clique em Executar). O Google vai pedir sua autorização para o script acessar serviços
+// externos -- é essa permissão que falta quando aparece "Você não tem permissão para chamar
+// UrlFetchApp.fetch". Depois de autorizar, publique uma NOVA VERSÃO da implantação.
+function autorizarPermissoes() {
+  var r = UrlFetchApp.fetch('https://api.mercadolibre.com/sites/MLB', {muteHttpExceptions: true});
+  Logger.log('Permissão concedida. O Mercado Livre respondeu ' + r.getResponseCode() + '.');
+  return r.getResponseCode();
+}
+
+// O erro de permissão do Google é técnico demais; explica o que fazer.
+function mlMensagem(err) {
+  var m = String(err && err.message ? err.message : err);
+  if (/UrlFetchApp|external_request/i.test(m)) {
+    return m + '  --  O QUE FAZER: abra o Apps Script da planilha, escolha a função "autorizarPermissoes"' +
+      ' na lista e clique em Executar. O Google vai pedir sua autorização para acessar serviços externos.' +
+      ' Depois publique uma NOVA VERSÃO da implantação (Implantar > Gerenciar implantações > lápis > Nova versão).';
+  }
+  return m;
+}
+
 function mlResponderErro(err) {
-  return jsonResponse({ok:false, erroML: String(err && err.message ? err.message : err)});
+  return jsonResponse({ok:false, erroML: mlMensagem(err)});
 }
 
 // Rotas do Mercado Livre, atendidas antes da trava da planilha: são conversas externas e podem
@@ -5239,7 +5261,7 @@ function mlPaginaDeRetorno(code, estado) {
       '. Pode fechar esta aba e voltar para o sistema.';
     cor = '#1b7f4d';
   } catch (err) {
-    msg = 'Não deu certo: ' + err.message;
+    msg = 'Não deu certo: ' + mlMensagem(err);
     cor = '#b3261e';
   }
   return HtmlService.createHtmlOutput('<html><body style="font-family:system-ui,Arial,sans-serif;padding:40px;max-width:640px;">' +
