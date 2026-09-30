@@ -3456,6 +3456,14 @@ function freteNoPreco(faixas, preco){
   return achado.custo;
 }
 
+// Endereço da página retorno.html publicada junto com este sistema. É ela que permite usar uma URL
+// de retorno só, cadastrada uma vez na aplicação do Mercado Livre, para vários clientes: ela recebe
+// a autorização e encaminha para a planilha que a pediu.
+function paginaDeRetornoCompartilhada(){
+  if(!/^https?:$/.test(location.protocol)) return '';   // arquivo aberto do disco não serve de retorno
+  try{ return new URL('retorno.html', location.href).href; }catch(e){ return ''; }
+}
+
 // ---------- conversa com o Apps Script ----------
 async function mlChamar(params){
   if(!gasUrl) throw new Error('Conecte a planilha do Google primeiro: a integração com o Mercado Livre mora no Apps Script dela.');
@@ -3713,6 +3721,8 @@ function renderML(){
       <div class="field textrow"><label>URL de retorno &mdash; tem que ser <b>igual</b> à cadastrada na aplicação do ML<span class="hint">Copie daqui e cole em "URLs de redirecionamento" no painel do Mercado Livre. Vem preenchida sozinha pelo Apps Script; só mude se a sua planilha tiver mais de uma implantação publicada e a certa for outra.</span></label>
         <input type="text" id="mlRedirect" value="${esc(st.redirect || '')}" style="width:100%;text-align:left;"></div>
       ${st.redirectManual ? `<p class="sub" style="margin:-4px 0 10px;">Escrita à mão. A que o Apps Script informa é <code>${esc(st.redirectPadrao || '(nenhuma)')}</code>.</p>` : ''}
+      ${paginaDeRetornoCompartilhada() ? `<p class="sub" style="margin:-4px 0 12px;">Atende <b>vários clientes</b> com a mesma aplicação do Mercado Livre? Use uma URL de retorno só para todos &mdash; aí você cadastra uma vez no painel do ML, e cada planilha nova não exige mexer lá.
+        <button class="btn small" type="button" id="mlUsarRetornoComum">Usar a página de retorno compartilhada</button></p>` : ''}
       ${st.urlAuth ? `<div class="field textrow"><label>Endereço que o botão Conectar abre<span class="hint">Serve para conferir: o <code>redirect_uri</code> daqui precisa ser idêntico ao cadastrado no ML.</span></label>
         <input type="text" id="mlUrlAuth" readonly value="${esc(st.urlAuth)}" style="width:100%;text-align:left;font-size:11px;"></div>` : ''}
       <div class="grid2">
@@ -3836,6 +3846,12 @@ function ligarML(){
   liga('mlTaxas', mlAtualizarTaxas);
   const urlAuth = q('mlUrlAuth');
   if(urlAuth) urlAuth.onclick = ()=> urlAuth.select();
+  liga('mlUsarRetornoComum', ()=>{
+    const campo = q('mlRedirect');
+    campo.value = paginaDeRetornoCompartilhada();
+    campo.focus();
+    toast('Cadastre essa URL na aplicação do Mercado Livre (uma vez só, serve para todos os clientes) e clique em "Guardar aplicação".', 'ok', 'URL de retorno trocada');
+  });
   const perfilSel = q('mlPerfil');
   if(perfilSel) perfilSel.onchange = ()=>{
     state.profiles.forEach(p=> p.ehMercadoLivre = (p.id === perfilSel.value));
@@ -5176,8 +5192,11 @@ function mlRedirect() {
 function mlUrlDeAutorizacao() {
   var id = mlProps().getProperty('ml_client_id');
   if (!id) throw new Error('Guarde o Client ID e o Client Secret da sua aplicação antes de conectar.');
+  // "state" leva o endereço desta planilha. Quando a URL de retorno é a página compartilhada (uma
+  // só para vários clientes), é por ele que ela sabe para qual planilha devolver a autorização.
   return 'https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=' + encodeURIComponent(id) +
-    '&redirect_uri=' + encodeURIComponent(mlRedirect());
+    '&redirect_uri=' + encodeURIComponent(mlRedirect()) +
+    '&state=' + encodeURIComponent(mlRedirectPadrao());
 }
 
 function mlSalvarApp(body) {
