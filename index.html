@@ -3712,6 +3712,13 @@ function renderML(){
   const vinculados = mlAnuncios().filter(a=> a.lst.mlItemId);
   const comTaxas = vinculados.filter(a=> Array.isArray(a.lst.mlFaixas) && a.lst.mlFaixas.length);
 
+  // Script antigo na planilha: a tela é nova, mas quem guarda a URL de retorno e consulta o envio é
+  // o Apps Script. Sem este aviso, o campo "voltava sozinho" ao salvar, sem explicação.
+  const scriptVelho = st && st.urlAuth === undefined;
+  const avisoVersao = scriptVelho ? `<div class="banner" style="margin:0 0 14px;"><svg class="bi"><use href="#i-warn"/></svg><div>
+      O Apps Script desta planilha está numa versão anterior${versaoScript ? ' (versão ' + versaoScript + ')' : ''}. Ele ignora a URL de retorno escrita aqui &mdash; por isso ela volta para o endereço do próprio Apps Script toda vez que você guarda &mdash; e não sabe consultar o custo de envio.
+      <b>Atualize para a versão ${CLIENTE_VERSAO}</b>: aba Sincronização &rarr; Copiar código &rarr; cole no Apps Script &rarr; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. Só salvar o arquivo no editor não vale.</div></div>` : '';
+
   const conexao = !gasUrl
     ? `<p class="sub">A integração mora no Apps Script da sua planilha, então primeiro conecte a planilha na aba <b>Sincronização</b>.</p>`
     : !st
@@ -3719,9 +3726,9 @@ function renderML(){
        <div class="form-actions"><button class="btn" id="mlRecarregarStatus">Tentar de novo</button></div>`
     : `
       <div class="field textrow"><label>URL de retorno &mdash; tem que ser <b>igual</b> à cadastrada na aplicação do ML<span class="hint">Copie daqui e cole em "URLs de redirecionamento" no painel do Mercado Livre. Vem preenchida sozinha pelo Apps Script; só mude se a sua planilha tiver mais de uma implantação publicada e a certa for outra.</span></label>
-        <input type="text" id="mlRedirect" value="${esc(st.redirect || '')}" style="width:100%;text-align:left;"></div>
+        <input type="text" id="mlRedirect" value="${esc(st.redirect || '')}" ${scriptVelho ? 'readonly title="Precisa do Apps Script versão ' + CLIENTE_VERSAO + ' para poder mudar"' : ''} style="width:100%;text-align:left;"></div>
       ${st.redirectManual ? `<p class="sub" style="margin:-4px 0 10px;">Escrita à mão. A que o Apps Script informa é <code>${esc(st.redirectPadrao || '(nenhuma)')}</code>.</p>` : ''}
-      ${paginaDeRetornoCompartilhada() ? `<p class="sub" style="margin:-4px 0 12px;">Atende <b>vários clientes</b> com a mesma aplicação do Mercado Livre? Use uma URL de retorno só para todos &mdash; aí você cadastra uma vez no painel do ML, e cada planilha nova não exige mexer lá.
+      ${paginaDeRetornoCompartilhada() && !scriptVelho ? `<p class="sub" style="margin:-4px 0 12px;">Atende <b>vários clientes</b> com a mesma aplicação do Mercado Livre? Use uma URL de retorno só para todos &mdash; aí você cadastra uma vez no painel do ML, e cada planilha nova não exige mexer lá.
         <button class="btn small" type="button" id="mlUsarRetornoComum">Usar a página de retorno compartilhada</button></p>` : ''}
       ${st.urlAuth ? `<div class="field textrow"><label>Endereço que o botão Conectar abre<span class="hint">Serve para conferir: o <code>redirect_uri</code> daqui precisa ser idêntico ao cadastrado no ML.</span></label>
         <input type="text" id="mlUrlAuth" readonly value="${esc(st.urlAuth)}" style="width:100%;text-align:left;font-size:11px;"></div>` : ''}
@@ -3799,7 +3806,7 @@ function renderML(){
     <div class="card">
       <h2>Conexão com o Mercado Livre</h2>
       <p class="sub">A senha da sua aplicação (Client Secret) fica guardada na planilha, no Apps Script &mdash; nunca nesta página, que é pública. É o Apps Script que conversa com o Mercado Livre.</p>
-      ${conexao}
+      ${avisoVersao}${conexao}
     </div>
 
     <div class="card">
