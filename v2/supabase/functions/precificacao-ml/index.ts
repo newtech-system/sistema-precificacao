@@ -428,21 +428,39 @@ async function mlItens(ml: ML, offset: number, limit: number) {
   }
   const dados: any[] = [];
   for (const u of urls) dados.push(...((await ml.get(u)) || []));
+  let anuncios: any[] = dados.map((linha) => linha && (linha.body || linha)).filter((it) => it && it.id);
+  // O SKU de cada variação mora no atributo SELLER_SKU dela, e o Mercado Livre só o devolve com
+  // include_attributes=all. Se a consulta em bloco não trouxe o SKU de alguma variação, relê aquele
+  // anúncio inteiro, um a um.
+  const incompletos = anuncios.filter((it) => (it.variations || []).some((v: any) => !skuDaVariacao(v)));
+  if (incompletos.length) {
+    const completos = await ml.todos(incompletos.map((it) => ML_API + '/items/' + it.id + '?include_attributes=all'));
+    const porId = new Map<string, any>();
+    completos.forEach((r, i) => { if (r.status < 400 && r.json && r.json.id) porId.set(incompletos[i].id, r.json); });
+    anuncios = anuncios.map((it) => porId.get(it.id) || it);
+  }
   const itens: any[] = [];
-  dados.forEach((linha) => {
-    const it = linha && (linha.body || linha);
-    if (!it || !it.id) return;
+  anuncios.forEach((it) => {
     const skuPai = it.seller_custom_field || atributo(it.attributes, 'SELLER_SKU') || '';
     const comum = { id: it.id, titulo: it.title || '', categoria: it.category_id || '', tipo: it.listing_type_id || '',
       situacao: it.status || '', link: it.permalink || '' };
     if (it.variations && it.variations.length) {
+      // anúncio com variações: uma linha por variação, cada uma com o SKU dela
       it.variations.forEach((v: any) => itens.push({ ...comum, variacao: String(v.id),
-        sku: v.seller_custom_field || atributo(v.attributes, 'SELLER_SKU') || skuPai, preco: Number(v.price || it.price) || 0 }));
+        sku: skuDaVariacao(v) || skuPai, opcoes: opcoesDaVariacao(v), preco: Number(v.price || it.price) || 0 }));
     } else {
       itens.push({ ...comum, variacao: '', sku: skuPai, preco: Number(it.price) || 0 });
     }
   });
   return { ok: true, total, itens, offset };
+}
+function skuDaVariacao(v: any) {
+  return String((v && (v.seller_custom_field || atributo(v.attributes, 'SELLER_SKU'))) || '');
+}
+// "Cor: Azul · Tamanho: M" -- para a pessoa reconhecer qual variação é cada linha
+function opcoesDaVariacao(v: any) {
+  return ((v && v.attribute_combinations) || []).filter((a: any) => a && a.value_name)
+    .map((a: any) => (a.name ? a.name + ': ' : '') + a.value_name).join(' · ');
 }
 
 // ---------------------------------------------------------------- entrada

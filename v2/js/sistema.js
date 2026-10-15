@@ -3371,7 +3371,7 @@ function renderML(){
           : s ? ` <span class="tag" title="Encontrado por ${esc(s.regra)}">sugestão: ${esc(s.a.lst.sku)}</span>` : ' <span class="muted">sem SKU igual aqui</span>');
     return `<tr>
       <td class="cell-sku">${esc(it.sku || '(sem SKU)')}</td>
-      <td class="cell-name">${esc(it.titulo)}${it.variacao ? ' <span class="tag">variação</span>' : ''}<span class="sub-val">${esc(it.id)}${it.variacao ? '/' + esc(it.variacao) : ''} · ${esc(mlNomeDoTipo(it.tipo))} · ${esc(it.situacao)}</span></td>
+      <td class="cell-name">${esc(it.titulo)}${it.variacao ? ' <span class="tag">variação</span>' + (it.opcoes ? ' <span class="muted">' + esc(it.opcoes) + '</span>' : '') : ''}<span class="sub-val">${esc(it.id)}${it.variacao ? '/' + esc(it.variacao) : ''} · ${esc(mlNomeDoTipo(it.tipo))} · ${esc(it.situacao)}</span></td>
       <td class="num">${brl(it.preco)}</td>
       <td>${destino}</td>
     </tr>`;

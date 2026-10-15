@@ -686,7 +686,7 @@
 
       <div class="card">
         <h2>Código para colar no Apps Script</h2>
-        <div class="banner" style="margin:12px 0;"><svg class="bi"><use href="#i-warn"/></svg><div>Este é o código <strong>versão 10</strong>. Novidade desta versão: anúncios do Mercado Livre com entrega "Combinar com o comprador" passam a ter o envio calculado como um percentual do preço (definido na tela Mercado Livre). Das versões anteriores: a versão 6 acrescentou a integração com o Mercado Livre (autorização e consulta de taxas ficam aqui, nunca na página). Além de tudo da versão 4 (produto pai com um anúncio por marketplace, faixas de preço, trava de gravações simultâneas), ele grava o <strong>histórico de alterações</strong> (aba <code>Historico</code>: quem mudou o quê e quando), percebe quando alguém <strong>edita a planilha à mão</strong> &mdash; e faz os dispositivos lerem e juntarem essa edição antes de gravar, em vez de apagá-la &mdash; e recusa páginas antigas do sistema que ainda estejam abertas em algum computador. A versão 4 continua funcionando, mas sem histórico e sem essa proteção. Para atualizar: cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. A URL continua a mesma.</div></div>
+        <div class="banner" style="margin:12px 0;"><svg class="bi"><use href="#i-warn"/></svg><div>Este é o código <strong>versão 11</strong>. Novidades: a lista de anúncios do Mercado Livre traz o SKU de cada variação (uma linha por variação); e, nos anúncios com entrega "Combinar com o comprador", o envio é calculado como um percentual do preço (versão 10). Das versões anteriores: a versão 6 acrescentou a integração com o Mercado Livre (autorização e consulta de taxas ficam aqui, nunca na página). Além de tudo da versão 4 (produto pai com um anúncio por marketplace, faixas de preço, trava de gravações simultâneas), ele grava o <strong>histórico de alterações</strong> (aba <code>Historico</code>: quem mudou o quê e quando), percebe quando alguém <strong>edita a planilha à mão</strong> &mdash; e faz os dispositivos lerem e juntarem essa edição antes de gravar, em vez de apagá-la &mdash; e recusa páginas antigas do sistema que ainda estejam abertas em algum computador. A versão 4 continua funcionando, mas sem histórico e sem essa proteção. Para atualizar: cole o código novo por cima do antigo e publique uma <strong>nova versão</strong> da implantação existente &mdash; <code>Implantar &rarr; Gerenciar implantações &rarr; lápis &rarr; Versão: Nova versão</code>. A URL continua a mesma.</div></div>
         <div class="form-actions" style="margin:0 0 12px;"><button class="btn small" id="copyCodeBtn">Copiar código</button></div>
         <pre class="codeblock" id="gasCode"></pre>
       </div>
@@ -1082,7 +1082,7 @@ let scriptDesatualizado = false;
 const GAS_VERSAO_MINIMA = 4;
 // Versão desta página, mandada em cada gravação. O Apps Script 5 recusa páginas mais antigas: elas
 // ainda têm o envio sem fila, que gerava conflitos falsos e desfazia alterações.
-const CLIENTE_VERSAO = 10;
+const CLIENTE_VERSAO = 11;
 const MSG_SCRIPT_ANTIGO = 'O código do Apps Script na sua planilha está desatualizado: ele não guarda o agrupamento de produtos (produto pai com um anúncio por marketplace), e o descartaria sem avisar. Para não apagar dados, nada foi enviado. Abra a aba Sincronização, copie o código novo, cole no Apps Script e publique uma NOVA VERSÃO da implantação existente (Implantar → Gerenciar implantações → lápis → Nova versão).';
 const BASE_KEY = 'mkt_pricing_base_v1';
 const USUARIO_KEY = 'mkt_pricing_usuario';
@@ -3990,7 +3990,7 @@ function renderML(){
           : s ? ` <span class="tag" title="Encontrado por ${esc(s.regra)}">sugestão: ${esc(s.a.lst.sku)}</span>` : ' <span class="muted">sem SKU igual aqui</span>');
     return `<tr>
       <td class="cell-sku">${esc(it.sku || '(sem SKU)')}</td>
-      <td class="cell-name">${esc(it.titulo)}${it.variacao ? ' <span class="tag">variação</span>' : ''}<span class="sub-val">${esc(it.id)}${it.variacao ? '/' + esc(it.variacao) : ''} · ${esc(mlNomeDoTipo(it.tipo))} · ${esc(it.situacao)}</span></td>
+      <td class="cell-name">${esc(it.titulo)}${it.variacao ? ' <span class="tag">variação</span>' + (it.opcoes ? ' <span class="muted">' + esc(it.opcoes) + '</span>' : '') : ''}<span class="sub-val">${esc(it.id)}${it.variacao ? '/' + esc(it.variacao) : ''} · ${esc(mlNomeDoTipo(it.tipo))} · ${esc(it.situacao)}</span></td>
       <td class="num">${brl(it.preco)}</td>
       <td>${destino}</td>
     </tr>`;
@@ -5186,7 +5186,7 @@ document.getElementById('resetBtn').onclick = ()=>{
 // ---------- SINCRONIZAÇÃO (Google Sheets) ----------
 const GAS_CODE = `// Versão do código. O sistema confere este número e se recusa a gravar numa planilha cujo
 // script seja mais antigo -- script antigo descarta em silêncio as colunas que não conhece.
-var SCRIPT_VERSION = 10;
+var SCRIPT_VERSION = 11;
 
 function doGet(e) {
   // as rotas do Mercado Livre não passam pela trava: são conversas externas e podem demorar
@@ -5882,6 +5882,15 @@ function mlAtributo(lista, id) {
   return achado;
 }
 
+function mlSkuDaVariacao(v) {
+  return String((v && (v.seller_custom_field || mlAtributo(v.attributes, 'SELLER_SKU'))) || '');
+}
+// "Cor: Azul · Tamanho: M" -- para a pessoa reconhecer qual variação é cada linha
+function mlOpcoesDaVariacao(v) {
+  return ((v && v.attribute_combinations) || []).filter(function (a) { return a && a.value_name; })
+    .map(function (a) { return (a.name ? a.name + ': ' : '') + a.value_name; }).join(' · ');
+}
+
 // Anúncios do vendedor, com o SKU que ele mesmo cadastrou (seller_custom_field ou atributo
 // SELLER_SKU). Anúncio com variações devolve uma linha por variação, porque cada uma tem SKU próprio.
 function mlItens(offset, limit) {
@@ -5897,18 +5906,38 @@ function mlItens(offset, limit) {
     dados = dados.concat(mlGet(ML_API + '/items?ids=' + ids.slice(i, i + 20).join(',') +
       '&attributes=id,title,price,status,category_id,listing_type_id,seller_custom_field,permalink,attributes,variations') || []);
   }
+  var anuncios = dados.map(function (linha) { return linha && (linha.body || linha); })
+    .filter(function (it) { return it && it.id; });
+  // O SKU de cada variação mora no atributo SELLER_SKU dela, e o Mercado Livre só o devolve com
+  // include_attributes=all. Se a consulta em bloco não trouxe o SKU de alguma variação, relê aquele
+  // anúncio inteiro, um a um.
+  var incompletos = anuncios.filter(function (it) {
+    return (it.variations || []).some(function (v) { return !mlSkuDaVariacao(v); });
+  });
+  if (incompletos.length) {
+    var token = mlToken();
+    var completos = mlFetchAll(incompletos.map(function (it) {
+      return {url: ML_API + '/items/' + it.id + '?include_attributes=all', muteHttpExceptions: true,
+        headers: {Authorization: 'Bearer ' + token}};
+    }));
+    var porId = {};
+    completos.forEach(function (r, i) {
+      if (r.getResponseCode() >= 400) return;
+      try { var d = JSON.parse(r.getContentText()); if (d && d.id) porId[incompletos[i].id] = d; } catch (e) {}
+    });
+    anuncios = anuncios.map(function (it) { return porId[it.id] || it; });
+  }
   var itens = [];
-  dados.forEach(function (linha) {
-    var it = linha && (linha.body || linha);
-    if (!it || !it.id) return;
+  anuncios.forEach(function (it) {
     var skuPai = it.seller_custom_field || mlAtributo(it.attributes, 'SELLER_SKU') || '';
     var comum = {id: it.id, titulo: it.title || '', categoria: it.category_id || '', tipo: it.listing_type_id || '',
       situacao: it.status || '', link: it.permalink || ''};
     if (it.variations && it.variations.length) {
+      // anúncio com variações: uma linha por variação, cada uma com o SKU dela
       it.variations.forEach(function (v) {
         itens.push({id: comum.id, variacao: String(v.id), titulo: comum.titulo, categoria: comum.categoria,
           tipo: comum.tipo, situacao: comum.situacao, link: comum.link,
-          sku: v.seller_custom_field || mlAtributo(v.attributes, 'SELLER_SKU') || skuPai,
+          sku: mlSkuDaVariacao(v) || skuPai, opcoes: mlOpcoesDaVariacao(v),
           preco: Number(v.price || it.price) || 0});
       });
     } else {
