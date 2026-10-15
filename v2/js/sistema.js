@@ -2967,19 +2967,48 @@ async function mlCarregarItens(){
   renderML();
 }
 
+// Tamanho no fim do SKU da variação ("01-01-26-M" é o tamanho M do produto "01-01-26"). Só letras de
+// tamanho de roupa, depois de um hífen: número no fim (o "26" de "01-01-26") faz parte do código do
+// produto e nunca é tratado como tamanho.
+const TAMANHOS_DO_SKU = ['pp', 'p', 'm', 'g', 'gg', 'xg', 'xgg', 'xxg', 'eg', 'egg', 'exg'];
+function semTamanho(sku){
+  const s = String(sku || '').trim();
+  const i = s.lastIndexOf('-');
+  if(i <= 0) return s;
+  return TAMANHOS_DO_SKU.includes(s.slice(i + 1).toLowerCase()) ? s.slice(0, i) : s;
+}
+
 // Sugestão de vínculo: só pelo SKU, sem adivinhar por nome. Primeiro o SKU do anúncio aqui,
-// depois o SKU do produto, depois o SKU sem o "-ID" do marketplace nas duas pontas.
+// depois o SKU do produto, depois o SKU sem o "-ID" do marketplace nas duas pontas. Se nada bater,
+// repete tudo sem o tamanho do fim do SKU da variação (-P, -M, -G...): o sistema cadastra o produto,
+// não cada tamanho. Um anúncio daqui liga a uma variação só; as outras do mesmo produto não têm
+// outro alvo (devolve jaVinculado em vez de deixar o usuário achando que o SKU não existe).
 function mlSugestao(it){
-  const sku = String(it.sku || '').trim().toLowerCase();
-  if(!sku) return null;
-  const anuncios = mlAnuncios().filter(a=> !a.lst.mlItemId);   // já vinculado a outro item não é sugestão
-  let achado = anuncios.find(a=> a.lst.sku.toLowerCase() === sku);
-  if(achado) return {a: achado, regra: 'SKU do anúncio'};
-  achado = anuncios.find(a=> a.prod.sku.toLowerCase() === sku);
-  if(achado) return {a: achado, regra: 'SKU do produto'};
-  const base = baseDoSku(sku).toLowerCase();
-  achado = anuncios.find(a=> baseDoSku(a.lst.sku).toLowerCase() === base || a.prod.sku.toLowerCase() === base);
-  if(achado) return {a: achado, regra: 'SKU sem o final do marketplace'};
+  const original = String(it.sku || '').trim().toLowerCase();
+  if(!original) return null;
+  const livres = mlAnuncios().filter(a=> !a.lst.mlItemId);   // já vinculado a outro item não é sugestão
+  const todos = mlAnuncios();
+  const tentativas = [{sku: original, sufixo: ''}];
+  const sem = semTamanho(original).toLowerCase();
+  if(sem !== original) tentativas.push({sku: sem, sufixo: ' (sem o tamanho)'});
+  const procurar = (lista, sku)=>{
+    let a = lista.find(x=> x.lst.sku.toLowerCase() === sku);
+    if(a) return {a, regra: 'SKU do anúncio'};
+    a = lista.find(x=> x.prod.sku.toLowerCase() === sku);
+    if(a) return {a, regra: 'SKU do produto'};
+    const base = baseDoSku(sku).toLowerCase();
+    a = lista.find(x=> baseDoSku(x.lst.sku).toLowerCase() === base || x.prod.sku.toLowerCase() === base);
+    return a ? {a, regra: 'SKU sem o final do marketplace'} : null;
+  };
+  for(const t of tentativas){
+    const r = procurar(livres, t.sku);
+    if(r) return {a: r.a, regra: r.regra + t.sufixo};
+  }
+  // o produto existe, mas o anúncio dele já está ligado a outra variação do mesmo anúncio do ML
+  for(const t of tentativas){
+    const r = procurar(todos.filter(x=> x.lst.mlItemId === it.id), t.sku);
+    if(r) return {a: r.a, jaVinculado: true, regra: r.regra + t.sufixo};
+  }
   return null;
 }
 
@@ -3338,7 +3367,8 @@ function renderML(){
     const destino = v
       ? `<b>${esc(v.lst.sku)}</b> <span class="muted">${esc(v.prod.name)}</span> <button class="btn small" data-mldesv="${esc(v.lst.id)}">Desvincular</button>`
       : `<select class="ml-alvo" data-mlchave="${esc(chave)}"><option value="">-- não vincular --</option>${opcoes}</select>`
-        + (s ? ` <span class="tag" title="Encontrado por ${esc(s.regra)}">sugestão: ${esc(s.a.lst.sku)}</span>` : ' <span class="muted">sem SKU igual aqui</span>');
+        + (s && s.jaVinculado ? ` <span class="muted" title="Encontrado por ${esc(s.regra)}">${esc(s.a.lst.sku)} já está ligado a outra variação deste anúncio</span>`
+          : s ? ` <span class="tag" title="Encontrado por ${esc(s.regra)}">sugestão: ${esc(s.a.lst.sku)}</span>` : ' <span class="muted">sem SKU igual aqui</span>');
     return `<tr>
       <td class="cell-sku">${esc(it.sku || '(sem SKU)')}</td>
       <td class="cell-name">${esc(it.titulo)}${it.variacao ? ' <span class="tag">variação</span>' : ''}<span class="sub-val">${esc(it.id)}${it.variacao ? '/' + esc(it.variacao) : ''} · ${esc(mlNomeDoTipo(it.tipo))} · ${esc(it.situacao)}</span></td>
