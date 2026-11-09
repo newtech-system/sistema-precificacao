@@ -1,5 +1,21 @@
   // Conexão da EMPRESA com a conta dela no Mercado Livre. A aplicação do ML (Client ID e Secret) é
   // uma só para todas as empresas e fica configurada no servidor pelo administrador.
+  // Releitura automática: o servidor relê as taxas e o envio dos anúncios vinculados a cada 3 dias.
+  const releitura = (()=>{
+    if(!st || !st.conectado) return '';
+    const r = st.releitura || {};
+    const resumo = r.resumo || {};
+    let txt;
+    if(r.emAndamento) txt = `Releitura automática em andamento${r.lidosNaVolta ? ` (${r.lidosNaVolta} anúncio(s) lidos até agora)` : ''}.`;
+    else if(r.ultima){
+      const proxima = new Date(new Date(r.ultima).getTime() + 3 * 86400000).toISOString();
+      txt = `Releitura automática a cada 3 dias: última volta completa em <b>${esc(dataHora(r.ultima))}</b>`
+        + (resumo.lidos !== undefined ? ` &middot; ${esc(resumo.lidos)} anúncio(s) lidos, ${esc(resumo.alterados || 0)} com mudança${resumo.erros ? `, ${esc(resumo.erros)} sem resposta do ML` : ''}` : '')
+        + `. A próxima começa a partir de ${esc(dataHora(proxima))}.`;
+    }
+    else txt = 'Releitura automática a cada 3 dias: ainda não rodou. A primeira começa em alguns minutos, sozinha.';
+    return `<p class="sub" style="margin:6px 0 0;">${txt}${r.erro ? `<br><span class="neg">Último aviso: ${esc(r.erro)}</span>` : ''}</p>`;
+  })();
   const conexao = !st
     ? `<p class="sub">Não consegui falar com o servidor da integração agora.</p>
        <div class="form-actions"><button class="btn" id="mlRecarregarStatus">Tentar de novo</button></div>`
@@ -19,4 +35,5 @@
       </div>
       <p class="sub" style="margin:10px 0 0;">${st.conectado
         ? `<span class="pos">Conectado</span> na conta <b>${esc(st.apelido || st.userId)}</b>.`
-        : 'Ainda não autorizado. Clique em Conectar, autorize na aba que abrir e volte aqui em "Já autorizei".'}</p>`;
+        : 'Ainda não autorizado. Clique em Conectar, autorize na aba que abrir e volte aqui em "Já autorizei".'}</p>
+      ${releitura}`;

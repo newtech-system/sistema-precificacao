@@ -12,6 +12,7 @@
 // Publicada com verify_jwt = false porque confere o login ela mesma, direto no Auth.
 // ============================================================================
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
+import { relerFatia, diferencas, chaveDoItem } from './rotina.ts';
 
 const ML_API = 'https://api.mercadolibre.com';
 const ML_AUTH = 'https://auth.mercadolivre.com.br/authorization';
@@ -463,11 +464,89 @@ function opcoesDaVariacao(v: any) {
     .map((a: any) => (a.name ? a.name + ': ' : '') + a.value_name).join(' · ');
 }
 
+// ---------------------------------------------------------------- releitura automática
+// Chamada pelo agendador do banco (pg_cron) a cada poucos minutos, com o segredo no cabeçalho
+// x-rotina. Cada chamada reserva UMA empresa que está devendo a releitura de 3 dias, relê o quanto
+// couber em ~80 s (de 12 em 12 vínculos) e para: a próxima chamada continua de onde parou. Quem
+// grava e decide o que mudou é o banco (srv_aplicar_releitura), então aqui só se lê e se manda.
+// Com { simular: true, empresa_id } não reserva nem grava: devolve o que MUDARIA (para conferir
+// com o Mercado Livre de verdade antes de ligar).
+const ROTINA_MS = 80000;
+const FATIA = 12;
+async function rotina(c: Record<string, unknown>) {
+  const inicio = Date.now();
+  const simular = c.simular === true;
+  let empresa: string, cursor: string | null = null, cache: Record<string, any> = {};
+  if (simular) {
+    empresa = String(c.empresa_id || '');
+    if (!UUID.test(empresa)) throw new Recusa(400, 'Empresa inválida.');
+  } else {
+    const pegou = await rpcServidor('srv_pegar_releitura', {});
+    if (!pegou || !pegou.length) return { ok: true, nada: true };
+    empresa = pegou[0].r_empresa; cursor = pegou[0].r_cursor; cache = pegou[0].r_cache || {};
+  }
+  let ml: ML;
+  try { ml = await ML.abrir(empresa); } catch (err) {
+    if (!simular) await rpcServidor('srv_falha_releitura', { p_empresa: empresa, p_erro: msg(err) });
+    return { ok: false, empresa, erro: msg(err) };
+  }
+  const fontes = {
+    frete: async (chaves: string[]) => { const r = await mlFrete(ml, chaves.join(',')); return { frete: r.frete as Record<string, any>, faltou: r.faltou }; },
+    taxas: async (chaves: string[]) => { const r = await mlTaxas(ml, chaves.join(',')); return { taxas: r.taxas as Record<string, any>, faltou: r.faltou }; },
+  };
+  const limite = simular ? Math.min(20, Math.max(1, Number(c.limite) || 5)) : FATIA;
+  let lidos = 0, alterados = 0, erros = 0, fim = false, ultimoErro = '';
+  const simulacao: any[] = [];
+  while (Date.now() - inicio < ROTINA_MS) {
+    const linhas: any[] = await rpcServidor('srv_proximos_vinculos', { p_empresa: empresa, p_cursor: cursor, p_limite: limite });
+    if (!linhas.length) {
+      if (!simular) await rpcServidor('srv_aplicar_releitura', { p_empresa: empresa, p_linhas: [], p_cursor: null, p_cache: {}, p_fim: true, p_lidos: 0, p_erros: 0, p_ultimo_erro: ultimoErro });
+      fim = true; break;
+    }
+    const r = await relerFatia(linhas, cache, fontes);
+    cache = r.cache;
+    if (r.processadas === 0) break;   // o ML não respondeu a tempo nem para a primeira: tenta na próxima chamada
+    const ultimo = linhas[r.processadas - 1].anuncio_id;
+    const terminouTudo = r.processadas === linhas.length && linhas.length < limite;
+    lidos += r.processadas; erros += r.erros; if (r.ultimoErro) ultimoErro = r.ultimoErro;
+    if (simular) {
+      r.aplicar.forEach((nova) => {
+        const atual = linhas.find((l) => l.anuncio_id === nova.anuncio_id);
+        simulacao.push({ item: chaveDoItem(atual), mudaria: diferencas(atual, nova) });
+      });
+      r.porLinha.filter((x) => x.erro).forEach((x) => simulacao.push({ item: x.chave, erro: x.erro }));
+      cursor = ultimo;
+      if (terminouTudo) { fim = true; break; }
+      if (lidos >= limite) break;   // a simulação lê só uma fatia
+      continue;
+    }
+    const ap = await rpcServidor('srv_aplicar_releitura', { p_empresa: empresa, p_linhas: r.aplicar, p_cursor: ultimo,
+      p_cache: r.cache, p_fim: terminouTudo, p_lidos: r.processadas, p_erros: r.erros, p_ultimo_erro: r.ultimoErro });
+    alterados += (ap && ap.alterados) || 0;
+    cursor = ultimo;
+    if (terminouTudo) { fim = true; break; }
+  }
+  return simular ? { ok: true, simulacao: simulacao, lidos, erros } : { ok: true, empresa, lidos, alterados, erros, fim };
+}
+async function rpcServidor(nome: string, args: Record<string, unknown>) {
+  const { data, error } = await admin.rpc(nome, args);
+  if (error) throw error;
+  return data;
+}
+
 // ---------------------------------------------------------------- entrada
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return resposta(405, { erro: 'Use POST.' });
   try {
+    // chamada do agendador do banco: não é uma pessoa, entra pelo segredo da rotina
+    const segredoRotina = req.headers.get('x-rotina');
+    if (segredoRotina !== null) {
+      if (!(await rpcServidor('srv_conferir_segredo_releitura', { p_segredo: segredoRotina }))) throw new Recusa(401, 'Não autorizado.');
+      lerSegredos();
+      if (!CLIENT_ID || !CLIENT_SECRET) return resposta(200, { ok: false, erro: 'A aplicação do Mercado Livre não está configurada.' });
+      return resposta(200, await rotina(await req.json().catch(() => ({}))));
+    }
     const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
     if (!token) throw new Recusa(401, 'Entre no sistema de novo.');
     const { data: quem, error: semLogin } = await admin.auth.getUser(token);
@@ -504,8 +583,12 @@ Deno.serve(async (req) => {
 
     if (acao === 'status') {
       const cx = await conexao(empresa);
+      const { data: rl } = await admin.from('ml_releituras')
+        .select('ultima_completa_em, iniciada_em, resumo, ultimo_erro, volta_lidos').eq('empresa_id', empresa).maybeSingle();
       return resposta(200, { ok: true, configurado, faltando, redirect: REDIRECT, conectado: !!(cx && cx.refresh_token),
-        apelido: (cx && cx.apelido) || '', userId: (cx && cx.ml_user_id) || '' });
+        apelido: (cx && cx.apelido) || '', userId: (cx && cx.ml_user_id) || '',
+        releitura: rl ? { ultima: rl.ultima_completa_em, emAndamento: !!rl.iniciada_em, lidosNaVolta: rl.volta_lidos,
+          resumo: rl.resumo || {}, erro: rl.ultimo_erro || '' } : null });
     }
     if (!podeEditar(papel)) throw new Recusa(403, 'Seu acesso a esta empresa é só de consulta.');
     if (!configurado) throw new Recusa(400, 'A aplicação do Mercado Livre não está configurada no servidor.');

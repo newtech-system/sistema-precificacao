@@ -76,6 +76,34 @@ Mercado Livre (vínculos, taxas, envio, conferência e correção) funcionam igu
   empresa.
 - As regras de sondagem, conferência e correção são as mesmas da v1 (o Apps Script foi portado).
 
+### Releitura automática (a cada 3 dias)
+
+O servidor relê sozinho as taxas e o envio dos anúncios vinculados de cada empresa conectada,
+como o botão "Atualizar taxas e envio dos vinculados" (só na v2; na v1 continua pelo botão).
+
+- **Quando:** o agendador do banco (pg_cron) chama a Edge Function a cada 5 minutos, mas só se
+  alguma empresa estiver devendo (`precificacao.releitura_pendente()`). Cada empresa é relida
+  quando a última volta completa passou de 3 dias.
+- **Em fatias:** cada chamada reserva uma empresa e relê o que couber em ~80 s (12 vínculos por
+  vez); a próxima continua de onde parou (`ml_releituras.cursor`). Uma empresa com 100 anúncios
+  leva algumas chamadas; nada fica pela metade se uma chamada falhar.
+- **O que grava:** só o que mudou de verdade (a função `srv_aplicar_releitura` compara). Linha que
+  não mudou não ganha versão nova nem entra no histórico. O histórico mostra o autor como
+  "Releitura automática (Mercado Livre)", e as telas abertas recebem o aviso em tempo real.
+- **O que NÃO faz:** não liga de volta "usar as taxas do ML" nem "usar o envio do ML" (se alguém
+  desligou de propósito, continua desligado), não confere nem corrige faixas, não muda preços
+  digitados. O preço calculado pela margem pode mudar, como no botão.
+- **Diferença do botão:** a releitura grava também a categoria e o tipo de HOJE que o ML devolve
+  (o botão da v1 não grava).
+- **Falhas:** autorização revogada ou ML fora do ar: anota em `ml_releituras.ultimo_erro` e só
+  tenta de novo em 6 horas. Anúncio que o ML não acha (apagado) conta como erro e é tentado na
+  volta seguinte.
+- **Ligar num projeto novo:** migração `0014_releitura_automatica.sql`, publicar a função, e rodar
+  `supabase/agendar-releitura.sql` (cria o segredo `releitura_segredo` no Vault e o agendamento).
+  Pausar: `select cron.unschedule('precificacao-releitura-ml');`
+- **Simular sem gravar:** a função aceita `{"ml":"rotina","simular":true,"empresa_id":"...","limite":6}`
+  com o segredo no cabeçalho `x-rotina` e devolve o que mudaria.
+
 ## Migração de um cliente
 
 1. Em `migrar.html`: criar a empresa, colar a URL do Apps Script do cliente (ou um backup JSON),
@@ -99,6 +127,7 @@ node ferramentas/extrair-v1.js          # regera js/v1-leitura.js a partir da v1
 node ferramentas/diff-calculo.mjs       # 20 mil cálculos v1 x v2: tem que dar 0 diferenças
 node ferramentas/teste-v1-leitura.mjs   # leitura da planilha no formato do Apps Script
 node ferramentas/teste-modelo.mjs       # tradução banco ⇄ v1, conferência e o que gravar
+node ferramentas/teste-rotina.mjs       # regra da releitura automática (precisa do Node 22.18+)
 ```
 
 O gerador para com erro se algum trecho da v1 que ele troca tiver mudado (em vez de gerar algo
