@@ -39,14 +39,25 @@ function casaBusca(texto, q, modo){
 // Liga ao campo de texto o menu "Busca exata / Começa com / Contém" (abre enquanto se digita), o
 // botão de limpar e a etiqueta do modo quando não é o padrão.
 // cfg: {obter: ()=> modo atual, definir: (modo)=> guarda, aoMudar: ()=> refaz a lista}
+const DESCRICAO_BUSCA = {exata: 'o texto inteiro igual', comeca: 'o início igual ao digitado', contem: 'em qualquer parte do texto'};
+const ICONE_BUSCA = {exata: '=', comeca: 'A…', contem: '…A…'};
 function ligarBuscaComModo(input, cfg){
   if(!input || input.dataset.buscaModo) return;
   input.dataset.buscaModo = '1';
   const pai = input.parentElement;
   if(getComputedStyle(pai).position === 'static') pai.style.position = 'relative';
   pai.classList.add('busca-tem');
+  // as três opções são montadas UMA vez; depois só se troca o texto e a marcação (nada de
+  // refazer o menu a cada tecla, que piscava)
   const menu = document.createElement('div');
-  menu.className = 'busca-menu'; menu.hidden = true; menu.setAttribute('role', 'listbox');
+  menu.className = 'busca-menu'; menu.setAttribute('role', 'listbox');
+  menu.innerHTML = MODOS_BUSCA.map(m =>
+    `<button type="button" class="busca-op" data-modo="${m.id}" role="option">`
+    + `<span class="busca-ic">${ICONE_BUSCA[m.id]}</span>`
+    + `<span class="busca-tx"><span class="busca-t">${esc(m.rotulo)} &ldquo;<b></b>&rdquo;</span>`
+    + `<span class="busca-d">${esc(DESCRICAO_BUSCA[m.id])}</span></span>`
+    + `<span class="busca-ok">em uso</span></button>`).join('');
+  const ops = [...menu.querySelectorAll('.busca-op')];
   const dir = document.createElement('span');
   dir.className = 'busca-dir';
   const tag = document.createElement('span'); tag.className = 'busca-tag';
@@ -57,36 +68,54 @@ function ligarBuscaComModo(input, cfg){
   let destaque = 0;
 
   const termo = ()=> input.value.trim();
+  const aberto = ()=> menu.classList.contains('aberto');
   function atualizaDir(){
     const modo = MODOS_BUSCA.find(m=> m.id === cfg.obter()) || MODOS_BUSCA[2];
-    tag.textContent = modo.curto; tag.hidden = !modo.curto || !termo();
+    const mostrar = !!modo.curto && !!termo();
+    if(mostrar && tag.hidden){ tag.hidden = false; tag.style.animation = 'none'; void tag.offsetWidth; tag.style.animation = ''; }
+    tag.textContent = modo.curto; tag.hidden = !mostrar;
     limpar.hidden = !input.value;
   }
-  function desenha(){
-    const atual = cfg.obter();
-    menu.innerHTML = MODOS_BUSCA.map((m, i)=>
-      `<button type="button" class="busca-op${i === destaque ? ' on' : ''}" data-modo="${m.id}" role="option">`
-      + `<span>${esc(m.rotulo)} &ldquo;<b>${esc(termo())}</b>&rdquo;</span>`
-      + (m.id === atual ? '<span class="ok">&#10003; em uso</span>' : '') + `</button>`).join('');
+  function pinta(){
+    const atual = cfg.obter() || 'contem';
+    const t = termo();
+    ops.forEach((b, i)=>{
+      b.classList.toggle('on', i === destaque);
+      b.classList.toggle('uso', b.dataset.modo === atual);
+      b.querySelector('b').textContent = t;
+    });
+  }
+  // ancorado embaixo do campo; se a direita do campo ficaria fora da tela, abre para o outro lado
+  function alinha(){
+    menu.classList.remove('esq');
+    const r = input.getBoundingClientRect();
+    const larg = Math.max(menu.offsetWidth, r.width);
+    if(r.right - larg < 8) menu.classList.add('esq');
   }
   function abre(){
     if(!termo()){ fecha(); return; }
-    destaque = Math.max(0, MODOS_BUSCA.findIndex(m=> m.id === cfg.obter()));
-    desenha(); menu.hidden = false;
+    destaque = Math.max(0, MODOS_BUSCA.findIndex(m=> m.id === (cfg.obter() || 'contem')));
+    pinta();
+    if(!aberto()){ alinha(); menu.classList.add('aberto'); }
   }
-  function fecha(){ menu.hidden = true; }
+  function fecha(){ menu.classList.remove('aberto'); }
   function escolhe(id){
-    cfg.definir(id); fecha(); atualizaDir(); cfg.aoMudar();
+    cfg.definir(id); fecha(); atualizaDir(); pinta(); cfg.aoMudar();
   }
   input.addEventListener('input', ()=>{ atualizaDir(); abre(); });
   input.addEventListener('focus', abre);
   input.addEventListener('keydown', (e)=>{
     if(e.key === 'Escape'){ fecha(); return; }
-    if(menu.hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && termo()){ e.preventDefault(); abre(); return; }
-    if(menu.hidden) return;
-    if(e.key === 'ArrowDown'){ e.preventDefault(); destaque = (destaque + 1) % MODOS_BUSCA.length; desenha(); }
-    else if(e.key === 'ArrowUp'){ e.preventDefault(); destaque = (destaque + MODOS_BUSCA.length - 1) % MODOS_BUSCA.length; desenha(); }
+    if(!aberto() && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && termo()){ e.preventDefault(); abre(); return; }
+    if(!aberto()) return;
+    if(e.key === 'ArrowDown'){ e.preventDefault(); destaque = (destaque + 1) % MODOS_BUSCA.length; pinta(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); destaque = (destaque + MODOS_BUSCA.length - 1) % MODOS_BUSCA.length; pinta(); }
     else if(e.key === 'Enter'){ e.preventDefault(); escolhe(MODOS_BUSCA[destaque].id); }
+  });
+  menu.addEventListener('mousemove', (e)=>{
+    const b = e.target.closest('[data-modo]');
+    const i = b ? ops.indexOf(b) : -1;
+    if(i >= 0 && i !== destaque){ destaque = i; pinta(); }
   });
   // mousedown (e não click) para o campo não perder o foco antes da escolha
   menu.addEventListener('mousedown', (e)=>{

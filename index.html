@@ -396,23 +396,44 @@
   .menu-item span{color:var(--ink-mute);font-size:11px;font-weight:400;}
 
   /* ============ busca com modo: exata, começa com, contém ============ */
-  .busca-menu{position:absolute;left:0;top:calc(100% + 6px);z-index:80;min-width:100%;width:max-content;max-width:340px;
+  /* O menu fica SEMPRE logo abaixo do campo e entra/sai com transição (opacidade + deslize curto),
+     em vez de aparecer e sumir de uma vez. */
+  .busca-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:80;width:max-content;min-width:100%;max-width:min(340px, calc(100vw - 24px));
     background:var(--surface-2);border:1px solid var(--line-strong);border-radius:var(--r);
-    box-shadow:var(--sh-3);padding:5px;display:flex;flex-direction:column;gap:2px;}
-  .busca-menu[hidden]{display:none;}
-  .busca-op{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;
-    color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:500;padding:8px 11px;
-    border-radius:var(--r-sm);cursor:pointer;}
-  .busca-op:hover,.busca-op.on{background:var(--surface-3);}
-  .busca-op b{color:var(--brand-2);font-weight:600;word-break:break-all;}
-  .busca-op .ok{margin-left:auto;color:var(--brand);font-size:11px;}
+    box-shadow:var(--sh-3);padding:6px;display:flex;flex-direction:column;gap:3px;
+    opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-6px) scale(.985);transform-origin:top right;
+    transition:opacity .16s ease, transform .2s cubic-bezier(.2,.8,.2,1), visibility 0s linear .2s;}
+  .busca-menu.esq{right:auto;left:0;transform-origin:top left;}
+  .busca-menu.aberto{opacity:1;visibility:visible;pointer-events:auto;transform:none;
+    transition:opacity .16s ease, transform .2s cubic-bezier(.2,.8,.2,1), visibility 0s;}
+  .busca-op{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:transparent;border:1px solid transparent;
+    color:var(--ink);font-family:inherit;padding:8px 10px;border-radius:var(--r-sm);cursor:pointer;
+    transition:background .14s ease, border-color .14s ease, transform .14s ease;}
+  .busca-op:hover,.busca-op.on{background:var(--surface-3);border-color:var(--line-strong);}
+  .busca-op:active{transform:scale(.985);}
+  .busca-ic{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
+    background:var(--surface);border:1px solid var(--line-strong);color:var(--ink-2);
+    font:600 11.5px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:-.02em;
+    transition:background .14s ease, color .14s ease, border-color .14s ease;}
+  .busca-op.on .busca-ic,.busca-op.uso .busca-ic{background:var(--brand-dim);border-color:var(--brand);color:var(--brand-2);}
+  .busca-tx{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;}
+  .busca-t{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .busca-t b{color:var(--brand-2);font-weight:600;}
+  .busca-d{font-size:11px;color:var(--ink-mute);font-weight:400;}
+  .busca-ok{flex:none;font-size:10.5px;font-weight:600;color:var(--brand);opacity:0;transition:opacity .14s ease;}
+  .busca-op.uso .busca-ok{opacity:1;}
   .busca-dir{position:absolute;right:8px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;}
   .busca-dir [hidden]{display:none;}
-  .busca-tag{font-size:10.5px;font-weight:600;color:var(--brand-ink);background:var(--brand);border-radius:var(--r-pill);padding:1px 7px;}
+  .busca-tag{font-size:10.5px;font-weight:600;color:var(--brand-ink);background:var(--brand);border-radius:var(--r-pill);padding:1px 8px;
+    animation:buscaTag .18s ease both;}
+  @keyframes buscaTag{from{opacity:0;transform:scale(.85);}to{opacity:1;transform:none;}}
   .busca-limpar{width:18px;height:18px;border-radius:50%;border:none;background:var(--surface-3);color:var(--ink-2);
-    font-size:13px;line-height:1;cursor:pointer;padding:0;}
-  .busca-limpar:hover{color:var(--ink);}
+    font-size:13px;line-height:1;cursor:pointer;padding:0;transition:background .14s ease, color .14s ease;}
+  .busca-limpar:hover{background:var(--line-strong);color:var(--ink);}
   .busca-tem input{padding-right:62px;}
+  @media (prefers-reduced-motion: reduce){
+    .busca-menu,.busca-menu.aberto,.busca-op,.busca-ic,.busca-ok,.busca-tag,.busca-limpar{transition:none;animation:none;}
+  }
 
   /* ============ faixas de preço ============ */
   .tier-table{font-size:12.5px;}
@@ -770,14 +791,25 @@ function casaBusca(texto, q, modo){
 // Liga ao campo de texto o menu "Busca exata / Começa com / Contém" (abre enquanto se digita), o
 // botão de limpar e a etiqueta do modo quando não é o padrão.
 // cfg: {obter: ()=> modo atual, definir: (modo)=> guarda, aoMudar: ()=> refaz a lista}
+const DESCRICAO_BUSCA = {exata: 'o texto inteiro igual', comeca: 'o início igual ao digitado', contem: 'em qualquer parte do texto'};
+const ICONE_BUSCA = {exata: '=', comeca: 'A…', contem: '…A…'};
 function ligarBuscaComModo(input, cfg){
   if(!input || input.dataset.buscaModo) return;
   input.dataset.buscaModo = '1';
   const pai = input.parentElement;
   if(getComputedStyle(pai).position === 'static') pai.style.position = 'relative';
   pai.classList.add('busca-tem');
+  // as três opções são montadas UMA vez; depois só se troca o texto e a marcação (nada de
+  // refazer o menu a cada tecla, que piscava)
   const menu = document.createElement('div');
-  menu.className = 'busca-menu'; menu.hidden = true; menu.setAttribute('role', 'listbox');
+  menu.className = 'busca-menu'; menu.setAttribute('role', 'listbox');
+  menu.innerHTML = MODOS_BUSCA.map(m =>
+    `<button type="button" class="busca-op" data-modo="${m.id}" role="option">`
+    + `<span class="busca-ic">${ICONE_BUSCA[m.id]}</span>`
+    + `<span class="busca-tx"><span class="busca-t">${esc(m.rotulo)} &ldquo;<b></b>&rdquo;</span>`
+    + `<span class="busca-d">${esc(DESCRICAO_BUSCA[m.id])}</span></span>`
+    + `<span class="busca-ok">em uso</span></button>`).join('');
+  const ops = [...menu.querySelectorAll('.busca-op')];
   const dir = document.createElement('span');
   dir.className = 'busca-dir';
   const tag = document.createElement('span'); tag.className = 'busca-tag';
@@ -788,36 +820,54 @@ function ligarBuscaComModo(input, cfg){
   let destaque = 0;
 
   const termo = ()=> input.value.trim();
+  const aberto = ()=> menu.classList.contains('aberto');
   function atualizaDir(){
     const modo = MODOS_BUSCA.find(m=> m.id === cfg.obter()) || MODOS_BUSCA[2];
-    tag.textContent = modo.curto; tag.hidden = !modo.curto || !termo();
+    const mostrar = !!modo.curto && !!termo();
+    if(mostrar && tag.hidden){ tag.hidden = false; tag.style.animation = 'none'; void tag.offsetWidth; tag.style.animation = ''; }
+    tag.textContent = modo.curto; tag.hidden = !mostrar;
     limpar.hidden = !input.value;
   }
-  function desenha(){
-    const atual = cfg.obter();
-    menu.innerHTML = MODOS_BUSCA.map((m, i)=>
-      `<button type="button" class="busca-op${i === destaque ? ' on' : ''}" data-modo="${m.id}" role="option">`
-      + `<span>${esc(m.rotulo)} &ldquo;<b>${esc(termo())}</b>&rdquo;</span>`
-      + (m.id === atual ? '<span class="ok">&#10003; em uso</span>' : '') + `</button>`).join('');
+  function pinta(){
+    const atual = cfg.obter() || 'contem';
+    const t = termo();
+    ops.forEach((b, i)=>{
+      b.classList.toggle('on', i === destaque);
+      b.classList.toggle('uso', b.dataset.modo === atual);
+      b.querySelector('b').textContent = t;
+    });
+  }
+  // ancorado embaixo do campo; se a direita do campo ficaria fora da tela, abre para o outro lado
+  function alinha(){
+    menu.classList.remove('esq');
+    const r = input.getBoundingClientRect();
+    const larg = Math.max(menu.offsetWidth, r.width);
+    if(r.right - larg < 8) menu.classList.add('esq');
   }
   function abre(){
     if(!termo()){ fecha(); return; }
-    destaque = Math.max(0, MODOS_BUSCA.findIndex(m=> m.id === cfg.obter()));
-    desenha(); menu.hidden = false;
+    destaque = Math.max(0, MODOS_BUSCA.findIndex(m=> m.id === (cfg.obter() || 'contem')));
+    pinta();
+    if(!aberto()){ alinha(); menu.classList.add('aberto'); }
   }
-  function fecha(){ menu.hidden = true; }
+  function fecha(){ menu.classList.remove('aberto'); }
   function escolhe(id){
-    cfg.definir(id); fecha(); atualizaDir(); cfg.aoMudar();
+    cfg.definir(id); fecha(); atualizaDir(); pinta(); cfg.aoMudar();
   }
   input.addEventListener('input', ()=>{ atualizaDir(); abre(); });
   input.addEventListener('focus', abre);
   input.addEventListener('keydown', (e)=>{
     if(e.key === 'Escape'){ fecha(); return; }
-    if(menu.hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && termo()){ e.preventDefault(); abre(); return; }
-    if(menu.hidden) return;
-    if(e.key === 'ArrowDown'){ e.preventDefault(); destaque = (destaque + 1) % MODOS_BUSCA.length; desenha(); }
-    else if(e.key === 'ArrowUp'){ e.preventDefault(); destaque = (destaque + MODOS_BUSCA.length - 1) % MODOS_BUSCA.length; desenha(); }
+    if(!aberto() && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && termo()){ e.preventDefault(); abre(); return; }
+    if(!aberto()) return;
+    if(e.key === 'ArrowDown'){ e.preventDefault(); destaque = (destaque + 1) % MODOS_BUSCA.length; pinta(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); destaque = (destaque + MODOS_BUSCA.length - 1) % MODOS_BUSCA.length; pinta(); }
     else if(e.key === 'Enter'){ e.preventDefault(); escolhe(MODOS_BUSCA[destaque].id); }
+  });
+  menu.addEventListener('mousemove', (e)=>{
+    const b = e.target.closest('[data-modo]');
+    const i = b ? ops.indexOf(b) : -1;
+    if(i >= 0 && i !== destaque){ destaque = i; pinta(); }
   });
   // mousedown (e não click) para o campo não perder o foco antes da escolha
   menu.addEventListener('mousedown', (e)=>{
