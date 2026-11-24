@@ -212,3 +212,15 @@ const pagina = htmlArquivo('html-cabeca.html') + '\n' + linhas.join('\n') + '\n'
 if(/gasUrlInput|resetBtn|view-sync/.test(pagina)) throw new Error('Ainda há restos da planilha na página gerada.');
 fs.writeFileSync(path.join(RAIZ, 'index.html'), pagina);
 console.log('index.html gerado.');
+
+// ---------------------------------------------------------------- o visual (css/base.css)
+// O <style> da v1, inteiro. Antes era uma cópia feita à mão e ficava para trás (a busca com modo
+// chegou a ir para a v2 sem estilo nenhum); agora sai daqui junto com o resto.
+const estIni = html.indexOf('<style>\n');
+const estFim = html.indexOf('</style>');
+if(estIni < 0 || estFim < estIni) throw new Error('Não achei o <style> da v1.');
+const estilo = html.slice(estIni + '<style>\n'.length, estFim).replace(/\n+$/, '').replace(/^ {2}:root\{/, ':root{');
+fs.writeFileSync(path.join(RAIZ, 'css', 'base.css'),
+  '/* GERADO por ferramentas/gerar-sistema.js a partir do <style> da v1 (index.html). NÃO EDITE À MÃO:\n'
+  + '   o que for só da v2 vai em css/v2.css. */\n' + estilo + '\n');
+console.log('css/base.css gerado.');

@@ -40,7 +40,7 @@ input[type=email], input[type=password]{
 table.v2-equipe{width:100%;border-collapse:collapse;font-size:13px;}
 table.v2-equipe th, table.v2-equipe td{padding:9px 12px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:middle;}
 table.v2-equipe th{font-size:11.5px;font-weight:500;color:var(--ink-mute);}
-table.v2-equipe select{padding:5px 8px;font-size:12.5px;}
+table.v2-equipe select{padding:5px 28px 5px 8px;font-size:12.5px;}
 table.v2-equipe .acoes{white-space:nowrap;text-align:right;}
 table.v2-equipe .acoes .btn + .btn{margin-left:6px;}
 @media (max-width:640px){

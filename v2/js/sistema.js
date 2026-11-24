@@ -21,6 +21,23 @@ function debounce(fn, ms){
   return function(){ const args = arguments; clearTimeout(t); t = setTimeout(()=> fn.apply(null, args), ms); };
 }
 
+// Onda do clique nos botões (.btn e .iconbtn): um único ouvinte para a página toda, então vale também
+// para botões criados depois. A onda nasce no ponto clicado, cresce até cobrir o botão e se apaga.
+document.addEventListener('pointerdown', (e)=>{
+  if(e.button !== 0 || !e.target.closest) return;
+  const b = e.target.closest('.btn, .iconbtn');
+  if(!b || b.disabled) return;
+  if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const r = b.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const d = 2 * Math.hypot(Math.max(x, r.width - x), Math.max(y, r.height - y));
+  const o = document.createElement('span');
+  o.className = 'onda';
+  o.style.cssText = `width:${d}px;height:${d}px;left:${x - d/2}px;top:${y - d/2}px`;
+  b.appendChild(o);
+  o.addEventListener('animationend', ()=> o.remove());
+}, {passive: true});
+
 // Busca com três jeitos de casar o que foi digitado, como nas listas de catálogo: "Busca exata"
 // (o campo inteiro igual), "Começa com" e "Contém" (o padrão, o jeito que a busca sempre foi).
 // Maiúsculas e minúsculas não contam.

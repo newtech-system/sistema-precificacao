@@ -14,7 +14,7 @@ Mercado Livre (vínculos, taxas, envio, conferência e correção) funcionam igu
 |---|---|
 | Banco | Supabase, projeto **tudo-auto** (`zbvnybygbzkqxmarwhlc`), schema **`precificacao`** — provisório, durante a construção |
 | Estrutura do banco | `supabase/migrations/*.sql`, aplicadas em ordem |
-| Tela | `index.html` e `js/sistema.js` — **gerados** da v1 por `ferramentas/gerar-sistema.js`, não editar à mão |
+| Tela | `index.html`, `js/sistema.js` e `css/base.css` — **gerados** da v1 por `ferramentas/gerar-sistema.js`, não editar à mão |
 | Trechos próprios da v2 na tela | `ferramentas/porte/*` (conversa com o banco, histórico, equipe, conta, Mercado Livre) |
 | Entrada (login, empresa) | `js/inicio.js` |
 | Tradução banco ⇄ formato da v1 | `js/modelo.js` (a mesma para a tela e para a conferência da migração) |
@@ -121,7 +121,7 @@ como o botão "Atualizar taxas e envio dos vinculados" (só na v2; na v1 continu
 Rodar depois de qualquer mudança na v1 (e antes de publicar a v2):
 
 ```
-node ferramentas/gerar-sistema.js       # regera index.html e js/sistema.js a partir da v1
+node ferramentas/gerar-sistema.js       # regera index.html, js/sistema.js e css/base.css a partir da v1
 node ferramentas/extrair-calculo.js     # regera js/calculo.js a partir da v1
 node ferramentas/extrair-v1.js          # regera js/v1-leitura.js a partir da v1
 node ferramentas/diff-calculo.mjs       # 20 mil cálculos v1 x v2: tem que dar 0 diferenças
