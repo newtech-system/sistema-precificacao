@@ -395,6 +395,25 @@
   .menu-item:hover{background:var(--surface-3);}
   .menu-item span{color:var(--ink-mute);font-size:11px;font-weight:400;}
 
+  /* ============ busca com modo: exata, começa com, contém ============ */
+  .busca-menu{position:absolute;left:0;top:calc(100% + 6px);z-index:80;min-width:100%;width:max-content;max-width:340px;
+    background:var(--surface-2);border:1px solid var(--line-strong);border-radius:var(--r);
+    box-shadow:var(--sh-3);padding:5px;display:flex;flex-direction:column;gap:2px;}
+  .busca-menu[hidden]{display:none;}
+  .busca-op{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;
+    color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:500;padding:8px 11px;
+    border-radius:var(--r-sm);cursor:pointer;}
+  .busca-op:hover,.busca-op.on{background:var(--surface-3);}
+  .busca-op b{color:var(--brand-2);font-weight:600;word-break:break-all;}
+  .busca-op .ok{margin-left:auto;color:var(--brand);font-size:11px;}
+  .busca-dir{position:absolute;right:8px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;}
+  .busca-dir [hidden]{display:none;}
+  .busca-tag{font-size:10.5px;font-weight:600;color:var(--brand-ink);background:var(--brand);border-radius:var(--r-pill);padding:1px 7px;}
+  .busca-limpar{width:18px;height:18px;border-radius:50%;border:none;background:var(--surface-3);color:var(--ink-2);
+    font-size:13px;line-height:1;cursor:pointer;padding:0;}
+  .busca-limpar:hover{color:var(--ink);}
+  .busca-tem input{padding-right:62px;}
+
   /* ============ faixas de preço ============ */
   .tier-table{font-size:12.5px;}
   .tier-table thead th{background:transparent;padding:0 6px 8px;font-size:10px;white-space:nowrap;}
@@ -731,6 +750,87 @@ function esc(v){
 function debounce(fn, ms){
   let t;
   return function(){ const args = arguments; clearTimeout(t); t = setTimeout(()=> fn.apply(null, args), ms); };
+}
+
+// Busca com três jeitos de casar o que foi digitado, como nas listas de catálogo: "Busca exata"
+// (o campo inteiro igual), "Começa com" e "Contém" (o padrão, o jeito que a busca sempre foi).
+// Maiúsculas e minúsculas não contam.
+const MODOS_BUSCA = [
+  {id: 'exata',  rotulo: 'Busca exata', curto: 'exata'},
+  {id: 'comeca', rotulo: 'Começa com',  curto: 'começa'},
+  {id: 'contem', rotulo: 'Contém',      curto: ''}
+];
+function casaBusca(texto, q, modo){
+  if(!q) return true;
+  const t = String(texto === undefined || texto === null ? '' : texto).toLowerCase();
+  if(modo === 'exata') return t === q;
+  if(modo === 'comeca') return t.startsWith(q);
+  return t.indexOf(q) !== -1;
+}
+// Liga ao campo de texto o menu "Busca exata / Começa com / Contém" (abre enquanto se digita), o
+// botão de limpar e a etiqueta do modo quando não é o padrão.
+// cfg: {obter: ()=> modo atual, definir: (modo)=> guarda, aoMudar: ()=> refaz a lista}
+function ligarBuscaComModo(input, cfg){
+  if(!input || input.dataset.buscaModo) return;
+  input.dataset.buscaModo = '1';
+  const pai = input.parentElement;
+  if(getComputedStyle(pai).position === 'static') pai.style.position = 'relative';
+  pai.classList.add('busca-tem');
+  const menu = document.createElement('div');
+  menu.className = 'busca-menu'; menu.hidden = true; menu.setAttribute('role', 'listbox');
+  const dir = document.createElement('span');
+  dir.className = 'busca-dir';
+  const tag = document.createElement('span'); tag.className = 'busca-tag';
+  const limpar = document.createElement('button');
+  limpar.type = 'button'; limpar.className = 'busca-limpar'; limpar.title = 'Limpar a busca'; limpar.textContent = '×';
+  dir.append(tag, limpar);
+  pai.append(menu, dir);
+  let destaque = 0;
+
+  const termo = ()=> input.value.trim();
+  function atualizaDir(){
+    const modo = MODOS_BUSCA.find(m=> m.id === cfg.obter()) || MODOS_BUSCA[2];
+    tag.textContent = modo.curto; tag.hidden = !modo.curto || !termo();
+    limpar.hidden = !input.value;
+  }
+  function desenha(){
+    const atual = cfg.obter();
+    menu.innerHTML = MODOS_BUSCA.map((m, i)=>
+      `<button type="button" class="busca-op${i === destaque ? ' on' : ''}" data-modo="${m.id}" role="option">`
+      + `<span>${esc(m.rotulo)} &ldquo;<b>${esc(termo())}</b>&rdquo;</span>`
+      + (m.id === atual ? '<span class="ok">&#10003; em uso</span>' : '') + `</button>`).join('');
+  }
+  function abre(){
+    if(!termo()){ fecha(); return; }
+    destaque = Math.max(0, MODOS_BUSCA.findIndex(m=> m.id === cfg.obter()));
+    desenha(); menu.hidden = false;
+  }
+  function fecha(){ menu.hidden = true; }
+  function escolhe(id){
+    cfg.definir(id); fecha(); atualizaDir(); cfg.aoMudar();
+  }
+  input.addEventListener('input', ()=>{ atualizaDir(); abre(); });
+  input.addEventListener('focus', abre);
+  input.addEventListener('keydown', (e)=>{
+    if(e.key === 'Escape'){ fecha(); return; }
+    if(menu.hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && termo()){ e.preventDefault(); abre(); return; }
+    if(menu.hidden) return;
+    if(e.key === 'ArrowDown'){ e.preventDefault(); destaque = (destaque + 1) % MODOS_BUSCA.length; desenha(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); destaque = (destaque + MODOS_BUSCA.length - 1) % MODOS_BUSCA.length; desenha(); }
+    else if(e.key === 'Enter'){ e.preventDefault(); escolhe(MODOS_BUSCA[destaque].id); }
+  });
+  // mousedown (e não click) para o campo não perder o foco antes da escolha
+  menu.addEventListener('mousedown', (e)=>{
+    const b = e.target.closest('[data-modo]');
+    if(!b) return;
+    e.preventDefault(); escolhe(b.dataset.modo);
+  });
+  limpar.addEventListener('mousedown', (e)=> e.preventDefault());
+  limpar.addEventListener('click', ()=>{
+    input.value = ''; input.dispatchEvent(new Event('input', {bubbles: true})); input.focus();
+  });
+  document.addEventListener('mousedown', (e)=>{ if(!pai.contains(e.target)) fecha(); });
+  atualizaDir();
 }
 
 // redesenho do catálogo agrupado: várias mudanças seguidas viram um desenho só
@@ -2224,6 +2324,7 @@ function ligarControlesDaTopbar(view){
     renderFilterOptions();
     const busca = document.getElementById('search');
     busca.addEventListener('input', debounce(()=>{ filtros.q = busca.value || ''; renderTable(); }, 120));
+    ligarBuscaComModo(busca, {obter: ()=> filtros.modo, definir: (m)=>{ filtros.modo = m; }, aoMudar: ()=> renderTable()});
     document.getElementById('filterMkt').addEventListener('change', (e)=>{ filtros.mkt = e.target.value; renderTable(); });
     document.getElementById('sortBy').addEventListener('change', (e)=>{ filtros.ordem = e.target.value; renderTable(); });
         document.getElementById('sheetActions').addEventListener('change', (e)=>{
@@ -2296,12 +2397,13 @@ function calcDoSku(sku){
 // remontada a cada troca de seção, então ler direto do DOM quebrava o desenho do catálogo
 // sempre que ele era disparado de fora da tela de Produtos -- e isso matava, em silêncio,
 // os botões das telas de Marketplaces, Custos e Sincronização.
-const filtros = {q:'', mkt:'', ordem:'margin_asc'};
+const filtros = {q:'', modo:'contem', mkt:'', ordem:'margin_asc'};
 
 // Uma linha por produto, com os anúncios dele dentro. Com um marketplace no filtro, cada produto
 // mostra só o preço daquele canal -- e some da lista quem não é vendido nele.
 function produtosFiltrados(){
-  const q = filtros.q.toLowerCase();
+  const q = filtros.q.trim().toLowerCase();
+  const modoBusca = filtros.modo;
   const mktFilter = filtros.mkt;
   const sortBy = filtros.ordem;
   const ordemMkt = id => { const i = state.profiles.findIndex(p=> p.id === id); return i === -1 ? 999 : i; };
@@ -2314,8 +2416,8 @@ function produtosFiltrados(){
     return {prod, ans};
   });
   if(mktFilter) linhas = linhas.filter(x=> x.ans.length);
-  if(q) linhas = linhas.filter(x=> x.prod.sku.toLowerCase().includes(q) || x.prod.name.toLowerCase().includes(q)
-    || x.prod.listings.some(l=> l.sku.toLowerCase().includes(q)));
+  if(q) linhas = linhas.filter(x=> casaBusca(x.prod.sku, q, modoBusca) || casaBusca(x.prod.name, q, modoBusca)
+    || x.prod.listings.some(l=> casaBusca(l.sku, q, modoBusca)));
   // ordenar produto por margem usa o pior anúncio (menor primeiro) ou o melhor (maior primeiro)
   const margens = x => x.ans.length ? x.ans.map(a=> a.r.error ? -Infinity : a.r.marginPct) : [-Infinity];
   const lucros  = x => x.ans.length ? x.ans.map(a=> a.r.error ? -Infinity : a.r.profit) : [-Infinity];
@@ -3423,7 +3525,7 @@ function renderBarraLote(){
 const ML_TIPOS = {gold_special: 'Clássico', gold_pro: 'Premium', gold: 'Ouro', silver: 'Prata', bronze: 'Bronze', free: 'Grátis'};
 function mlNomeDoTipo(t){ return ML_TIPOS[t] || t || '--'; }
 
-let mlEstado = {status: null, itens: [], total: 0, carregando: false, filtro: '', mensagem: '', so: 'sem'};
+let mlEstado = {status: null, itens: [], total: 0, carregando: false, filtro: '', modoBusca: 'contem', mensagem: '', so: 'sem'};
 
 // Qual marketplace do sistema é o Mercado Livre (marcado na tela da integração; na dúvida, o que
 // tiver ID ou nome de Mercado Livre). Sem isso o sistema não teria como saber em qual canal mexer.
@@ -3977,7 +4079,7 @@ function renderML(){
 
   const filtro = mlEstado.filtro.trim().toLowerCase();
   const itens = mlEstado.itens.filter(it=> !filtro
-    || String(it.sku).toLowerCase().includes(filtro) || String(it.titulo).toLowerCase().includes(filtro) || String(it.id).toLowerCase().includes(filtro));
+    || casaBusca(it.sku, filtro, mlEstado.modoBusca) || casaBusca(it.titulo, filtro, mlEstado.modoBusca) || casaBusca(it.id, filtro, mlEstado.modoBusca));
   const opcoes = mlAnuncios().map(a=> `<option value="${esc(a.lst.id)}">${esc(a.lst.sku)} — ${esc(a.prod.name)}</option>`).join('');
   const linhas = itens.slice(0, 300).map(it=>{
     const chave = mlChaveDoItem(it);
@@ -4132,6 +4234,7 @@ function ligarML(){
     const novo = document.getElementById('mlBusca');
     if(novo){ novo.focus(); novo.setSelectionRange(novo.value.length, novo.value.length); }
   }, 250));
+  ligarBuscaComModo(busca, {obter: ()=> mlEstado.modoBusca, definir: (m)=>{ mlEstado.modoBusca = m; }, aoMudar: ()=> renderML()});
   const view = q('view-ml');
   view.querySelectorAll('.ml-alvo').forEach(sel=> sel.onchange = ()=>{
     if(!sel.value) return;
