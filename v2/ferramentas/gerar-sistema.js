@@ -224,3 +224,21 @@ fs.writeFileSync(path.join(RAIZ, 'css', 'base.css'),
   '/* GERADO por ferramentas/gerar-sistema.js a partir do <style> da v1 (index.html). NÃO EDITE À MÃO:\n'
   + '   o que for só da v2 vai em css/v2.css. */\n' + estilo + '\n');
 console.log('css/base.css gerado.');
+
+// ---------------------------------------------------------------- versão nos endereços
+// O GitHub Pages manda o navegador guardar cada arquivo por 10 minutos. Sem isto, a página nova
+// podia abrir com o visual ou o código velho guardado. Cada endereço leva "?v=" + um resumo do
+// conteúdo: mudou o arquivo, muda o endereço, e o navegador baixa o novo na hora.
+const crypto = require('crypto');
+const versao = rel => crypto.createHash('sha1').update(fs.readFileSync(path.join(RAIZ, rel))).digest('hex').slice(0, 10);
+const versionados = ['css/base.css', 'css/v2.css', 'js/sistema.js', 'js/inicio.js', 'js/migrar.js'];
+for(const pag of ['index.html', 'migrar.html', 'ml-retorno.html']){
+  const arq = path.join(RAIZ, pag);
+  let t = fs.readFileSync(arq, 'utf8');
+  for(const rel of versionados){
+    const re = new RegExp(`((?:href|src)=")${rel.replace(/[.]/g, '\\.')}(?:\\?v=[0-9a-f]+)?(")`, 'g');
+    t = t.replace(re, `$1${rel}?v=${versao(rel)}$2`);
+  }
+  fs.writeFileSync(arq, t);
+}
+console.log('versões nos endereços atualizadas.');
